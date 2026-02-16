@@ -5,6 +5,7 @@ import { X, User } from "lucide-react";
 import { Input } from "./ui/Input";
 import { Button } from "./ui/Button";
 import { Footer } from "./Footer";
+import logo from "../assets/logo.png";
 
 export function Layout({ children }) {
     const { user, updateUser } = useExpenses();
@@ -29,11 +30,14 @@ export function Layout({ children }) {
                     animate={{ opacity: 1, y: 0 }}
                     className="mb-8 flex items-center justify-between"
                 >
-                    <div>
-                        <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent">
-                            The Expense Files
-                        </h1>
-                        <p className="text-gray-400 text-sm mt-1">Manage your finances with style.</p>
+                    <div className="flex items-center gap-4">
+                        <img src={logo} alt="The Expense Files Logo" className="w-12 h-12 rounded-xl shadow-lg shadow-accent-blue/20" />
+                        <div>
+                            <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent">
+                                The Expense Files
+                            </h1>
+                            <p className="text-gray-400 text-sm mt-1">Manage your finances with style.</p>
+                        </div>
                     </div>
                     <button
                         onClick={() => {
