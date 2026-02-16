@@ -3,24 +3,14 @@ import { format, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameD
 
 const ExpenseContext = createContext();
 
-const INITIAL_EXPENSES = [
-    { id: 1, title: "Grocery Run", amount: 120.50, category: "Food & Dining", date: new Date().toISOString() },
-    { id: 2, title: "Uber Ride", amount: 24.00, category: "Transportation", date: new Date().toISOString() },
-    { id: 3, title: "Netflix Subscription", amount: 15.99, category: "Entertainment", date: new Date().toISOString() },
-    { id: 4, title: "Electric Bill", amount: 150.00, category: "Utilities", date: new Date().toISOString() },
-    { id: 5, title: "New Headphones", amount: 299.00, category: "Shopping", date: subMonths(new Date(), 1).toISOString() }, // Last month
-];
+const INITIAL_EXPENSES = [];
 
-const INITIAL_GOALS = [
-    { id: 1, name: "New Laptop", current: 45000, target: 80000, color: "#007AFF" },
-    { id: 2, name: "Goa Trip", current: 12000, target: 25000, color: "#AF52DE" },
-    { id: 3, name: "Emergency Fund", current: 80000, target: 100000, color: "#34C759" },
-];
+const INITIAL_GOALS = [];
 
 export function ExpenseProvider({ children }) {
     const [expenses, setExpenses] = useState(INITIAL_EXPENSES);
     const [goals, setGoals] = useState(INITIAL_GOALS);
-    const [budget, setBudget] = useState(3500);
+    const [budget, setBudget] = useState(0);
     const [user, setUser] = useState({ name: "John Doe" });
 
     const updateUser = (name) => {
