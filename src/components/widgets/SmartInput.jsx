@@ -8,14 +8,14 @@ import { useExpenses } from "../../context/ExpenseContext";
 export function SmartInput() {
     const { addExpense } = useExpenses();
     const [title, setTitle] = useState("");
-    const [amount, setAmount] = useState("");
+    const [amount, setAmount] = useState("0");
     const [category, setCategory] = useState("Food & Dining");
 
     const handleAdd = () => {
         if (!title || !amount) return;
         addExpense({ title, amount: parseFloat(amount), category });
         setTitle("");
-        setAmount("");
+        setAmount("0");
     };
 
     return (

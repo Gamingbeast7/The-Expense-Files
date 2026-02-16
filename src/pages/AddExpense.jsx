@@ -23,7 +23,7 @@ export function AddExpense() {
     const { addExpense } = useExpenses();
     const navigate = useNavigate();
 
-    const [amount, setAmount] = useState("");
+    const [amount, setAmount] = useState("0");
     const [date, setDate] = useState("");
     const [category, setCategory] = useState("Food & Dining");
     const [description, setDescription] = useState("");

@@ -18,7 +18,7 @@ export function Goals() {
     const [newGoal, setNewGoal] = useState({ name: "", target: "", current: "0", color: "#007AFF" });
 
     // Add Money Form State
-    const [addAmount, setAddAmount] = useState("");
+    const [addAmount, setAddAmount] = useState("0");
 
     const handleAddGoal = (e) => {
         e.preventDefault();
@@ -37,7 +37,7 @@ export function Goals() {
         if (showMoneyModal && addAmount) {
             updateGoal(showMoneyModal, addAmount);
             setShowMoneyModal(null);
-            setAddAmount("");
+            setAddAmount("0");
         }
     };
 
