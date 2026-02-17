@@ -6,13 +6,13 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input, Select } from "../components/ui/Input";
 import { useExpenses } from "../context/ExpenseContext";
-import { Plus, X, Receipt, ArrowRight, User, Check, Settings, Trash2, UserPlus } from "lucide-react";
+import { Plus, X, Receipt, ArrowRight, User, Check, Settings, Trash2, UserPlus, MoreVertical, Edit2, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 
 export function GroupDetails() {
     const { groupId } = useParams();
     const navigate = useNavigate();
-    const { groups, fetchGroupExpenses, groupExpenses, addGroupExpense, user } = useExpenses();
+    const { groups, fetchGroupExpenses, groupExpenses, addGroupExpense, updateGroupExpense, deleteGroupExpense, user } = useExpenses();
     const [isAddOpen, setIsAddOpen] = useState(false);
 
     // Helpers for Add Expense Form
@@ -23,11 +23,24 @@ export function GroupDetails() {
     const [involvedMembers, setInvolvedMembers] = useState([]); // Members involved in split
     const [syncToPersonal, setSyncToPersonal] = useState(false); // Sync to personal dashboard
 
+    // Multi-payer State
+    const [payers, setPayers] = useState([]); // [{uid, amount}]
+    const [isMultiPayer, setIsMultiPayer] = useState(false);
+
+    // Edit Mode State
+    const [editingExpense, setEditingExpense] = useState(null);
+
+    // Settle Up State
+    const [isSettleOpen, setIsSettleOpen] = useState(false);
+    const [settlePayer, setSettlePayer] = useState("");
+    const [settleReceiver, setSettleReceiver] = useState("");
+    const [settleAmount, setSettleAmount] = useState("");
+
     // Group Settings State
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const group = groups.find(g => g.id === groupId);
-    const allMembers = useMemo(() => group ? ["Me", ...(group.friends?.map(f => f.username || f.name || f) || [])] : [], [group]);
+    const allMembers = useMemo(() => group ? ["Me", ...(group.friends?.map(f => f.username || f.name || f.displayName || (typeof f === 'string' ? f : 'Unknown')) || [])] : [], [group]);
 
     useEffect(() => {
         if (groupId) {
@@ -50,15 +63,39 @@ export function GroupDetails() {
         allMembers.forEach(m => bals[m] = 0);
 
         groupExpenses.forEach(exp => {
-            const payer = exp.paidBy === user.uid ? "Me" : exp.paidBy;
+            // Handle Settlement
+            if (exp.type === 'SETTLEMENT') {
+                if (bals[exp.paidBy] !== undefined) bals[exp.paidBy] += exp.amount;
+                if (bals[exp.paidTo] !== undefined) bals[exp.paidTo] -= exp.amount;
+                return;
+            }
+
+            // Handle Payer(s)
+            if (exp.payers && exp.payers.length > 0) {
+                exp.payers.forEach(p => {
+                    const pName = p.uid === user.uid ? "Me" : (p.username || p.uid); // Try to match Member ID format
+                    // Simplified: We use "Me" or username as ID in allMembers.
+                    // If p.uid matches a member, add to them.
+                    // For now, let's assume p.uid is the identifier used in allMembers if not "Me".
+                    // Actually, addGroupExpense saves {uid: "Me", amount} for user.
+                    // Let's stick to the convention used in addGroupExpense: 
+                    // paidBy is a string from allMembers list ("Me", "alice", etc.)
+
+                    // Wait, our UI uses strings from allMembers. 
+                    // We should align data model. 
+                    // Let's assume exp.payers = [{ member: "Me", amount: 100 }, { member: "alice", amount: 50 }]
+                    if (bals[p.member] !== undefined) bals[p.member] += p.amount;
+                });
+            } else {
+                if (bals[exp.paidBy] !== undefined) bals[exp.paidBy] += exp.amount;
+            }
+
             const cost = exp.amount;
 
-            // Only split among involves members or all if not specified
+            // Split Logic
             const splitAmong = exp.involvedMembers || allMembers;
             const splitCount = splitAmong.length;
             const splitAmount = cost / splitCount;
-
-            if (bals[exp.paidBy] !== undefined) bals[exp.paidBy] += cost;
 
             splitAmong.forEach(member => {
                 if (bals[member] !== undefined) bals[member] -= splitAmount;
@@ -68,24 +105,80 @@ export function GroupDetails() {
         return bals;
     }, [group, groupExpenses, user, allMembers]);
 
-    const handleAddExpense = async (e) => {
+    const handleOpenEdit = (exp) => {
+        setEditingExpense(exp);
+        setTitle(exp.title);
+        setAmount(exp.amount);
+        setPaidBy(exp.paidBy === 'Multiple' ? 'Multiple' : exp.paidBy);
+        setSplitType(exp.splitType || 'EQUAL');
+        setInvolvedMembers(exp.involvedMembers || allMembers);
+
+        if (exp.paidBy === 'Multiple' && exp.payers) {
+            setIsMultiPayer(true);
+            setPayers(exp.payers);
+        } else {
+            setIsMultiPayer(false);
+            setPayers([]);
+        }
+
+        setIsAddOpen(true);
+    };
+
+    const handleDeleteExpense = async (expId) => {
+        if (window.confirm("Delete this expense?")) {
+            await deleteGroupExpense(groupId, expId);
+        }
+    };
+
+    const handleSettleUp = async (e) => {
         e.preventDefault();
-        if (!title || !amount) return;
+        if (!settleAmount || !settlePayer || !settleReceiver) return;
 
         await addGroupExpense(groupId, {
-            title,
-            amount: parseFloat(amount),
+            title: "Settlement",
+            amount: parseFloat(settleAmount),
             date: new Date().toISOString(),
-            paidBy,
-            splitType,
-            involvedMembers,
-            syncToPersonal
+            paidBy: settlePayer,
+            paidTo: settleReceiver,
+            type: "SETTLEMENT",
+            syncToPersonal: false
         });
 
+        setIsSettleOpen(false);
+        setSettlePayer("");
+        setSettleReceiver("");
+        setSettleAmount("");
+    }
+
+    const handleAddExpense = async (e) => {
+        e.preventDefault();
+        if ((!title && !editingExpense) || !amount) return;
+
+        const expenseData = {
+            title,
+            amount: parseFloat(amount),
+            date: editingExpense ? editingExpense.date : new Date().toISOString(),
+            paidBy: isMultiPayer ? 'Multiple' : paidBy,
+            payers: isMultiPayer ? payers : [],
+            splitType,
+            involvedMembers,
+            syncToPersonal,
+            type: "EXPENSE"
+        };
+
+        if (editingExpense) {
+            await updateGroupExpense(groupId, editingExpense.id, expenseData);
+        } else {
+            await addGroupExpense(groupId, expenseData);
+        }
+
         setIsAddOpen(false);
+        setEditingExpense(null);
         setTitle("");
         setAmount("");
         setPaidBy("Me");
+        setIsMultiPayer(false);
+        setPayers([]);
         setInvolvedMembers(allMembers);
         setSyncToPersonal(false);
     };
@@ -159,10 +252,14 @@ export function GroupDetails() {
                     <div>
                         <h1 className="text-3xl font-bold text-white mb-2">{group.name}</h1>
                         <p className="text-gray-400">
-                            Members: You, {group.friends?.join(", ")}
+                            Members: You, {group.friends?.map(f => f.username || f.name || f.displayName || (typeof f === 'string' ? f : 'Friend')).join(", ")}
                         </p>
                     </div>
                     <div className="flex gap-2">
+                        <Button onClick={() => setIsSettleOpen(true)} variant="secondary" className="px-3 flex items-center gap-2">
+                            <RefreshCw size={18} />
+                            Settle Up
+                        </Button>
                         <Button onClick={() => setIsSettingsOpen(true)} variant="secondary" className="px-3">
                             <Settings size={20} />
                         </Button>
@@ -204,20 +301,40 @@ export function GroupDetails() {
                             </div>
                         ) : (
                             groupExpenses.map(exp => (
-                                <Card key={exp.id} className="p-4 flex justify-between items-center hover:bg-white-5 transition-colors">
+                                <Card key={exp.id} className="p-4 flex justify-between items-center hover:bg-white-5 transition-colors group/card">
                                     <div className="flex items-center gap-4">
-                                        <div className="w-10 h-10 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center">
-                                            <Receipt size={20} />
+                                        <div className={`w-10 h-10 rounded-full ${exp.type === 'SETTLEMENT' ? 'bg-accent-green/20 text-accent-green' : 'bg-accent-blue/20 text-accent-blue'} flex items-center justify-center`}>
+                                            {exp.type === 'SETTLEMENT' ? <RefreshCw size={20} /> : <Receipt size={20} />}
                                         </div>
                                         <div>
                                             <h4 className="font-bold text-white">{exp.title}</h4>
                                             <p className="text-xs text-gray-500">
-                                                Paid by <span className="text-white">{exp.paidBy}</span> • {format(new Date(exp.date), "MMM d")}
+                                                {exp.type === 'SETTLEMENT' ? (
+                                                    <span className="text-white">{exp.paidBy} paid {exp.paidTo}</span>
+                                                ) : (
+                                                    <>Paid by <span className="text-white">{exp.paidBy}</span></>
+                                                )}
+                                                &nbsp;• {format(new Date(exp.date), "MMM d")}
                                             </p>
                                         </div>
                                     </div>
-                                    <div className="text-right">
-                                        <span className="block font-bold text-white text-lg">₹{exp.amount.toFixed(2)}</span>
+
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-right">
+                                            <span className={`block font-bold text-lg ${exp.type === 'SETTLEMENT' ? 'text-accent-green' : 'text-white'}`}>
+                                                ₹{exp.amount.toFixed(2)}
+                                            </span>
+                                        </div>
+
+                                        {/* Actions Menu */}
+                                        <div className="opacity-0 group-hover/card:opacity-100 transition-opacity flex gap-2">
+                                            <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(exp); }} className="p-2 hover:bg-white-10 rounded-full text-gray-400 hover:text-white">
+                                                <Edit2 size={16} />
+                                            </button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteExpense(exp.id); }} className="p-2 hover:bg-red-500/20 rounded-full text-gray-400 hover:text-red-500">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
                                     </div>
                                 </Card>
                             ))
@@ -237,7 +354,12 @@ export function GroupDetails() {
                             className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-6 w-full max-w-md"
                         >
                             <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-2xl font-bold text-white">Add Group Expense</h2>
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-2xl font-bold text-white">{editingExpense ? 'Edit Expense' : 'Add Group Expense'}</h2>
+                                    <button onClick={() => { setIsAddOpen(false); setEditingExpense(null); }} className="text-gray-500 hover:text-white">
+                                        <X size={24} />
+                                    </button>
+                                </div>
                                 <button onClick={() => setIsAddOpen(false)} className="text-gray-500 hover:text-white">
                                     <X size={24} />
                                 </button>
@@ -274,16 +396,52 @@ export function GroupDetails() {
                                         {allMembers.map(m => (
                                             <div
                                                 key={m}
-                                                onClick={() => setPaidBy(m)}
+                                                onClick={() => { setPaidBy(m); setIsMultiPayer(false); }}
                                                 className={`
                                                     cursor-pointer p-2 rounded-lg text-center text-sm border transition-all
-                                                    ${paidBy === m ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400 hover:bg-white-10'}
+                                                    ${!isMultiPayer && paidBy === m ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400 hover:bg-white-10'}
                                                 `}
                                             >
                                                 {m}
                                             </div>
                                         ))}
+                                        <div
+                                            onClick={() => setIsMultiPayer(true)}
+                                            className={`
+                                                cursor-pointer p-2 rounded-lg text-center text-sm border transition-all
+                                                ${isMultiPayer ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400 hover:bg-white-10'}
+                                            `}
+                                        >
+                                            Multiple
+                                        </div>
                                     </div>
+                                    {isMultiPayer && (
+                                        <div className="mt-3 space-y-2 bg-white-5 p-3 rounded-xl">
+                                            <p className="text-xs text-gray-400 mb-2">Enter amount paid by each person:</p>
+                                            {allMembers.map(m => (
+                                                <div key={m} className="flex items-center justify-between">
+                                                    <span className="text-sm text-white">{m}</span>
+                                                    <Input
+                                                        type="number"
+                                                        placeholder="0"
+                                                        className="w-24 h-8 text-right"
+                                                        value={payers.find(p => p.member === m)?.amount || ''}
+                                                        onChange={(e) => {
+                                                            const val = parseFloat(e.target.value) || 0;
+                                                            const newPayers = payers.filter(p => p.member !== m);
+                                                            if (val > 0) newPayers.push({ member: m, amount: val });
+                                                            setPayers(newPayers);
+                                                            // Auto-sum amount if 0 or manual overridden? 
+                                                            // Better to let user manually type total or auto-sum total.
+                                                            // Let's auto-update total 'Amount' field for convenience
+                                                            const total = newPayers.reduce((acc, curr) => acc + curr.amount, 0);
+                                                            setAmount(total.toString());
+                                                        }}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Split With */}
@@ -419,6 +577,75 @@ export function GroupDetails() {
                                     </Button>
                                 </div>
                             </div>
+                        </motion.div>
+                    </div>
+                )}
+                )}
+
+                {/* Settle Up Modal */}
+                {isSettleOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-6 w-full max-w-md"
+                        >
+                            <div className="flex justify-between items-center mb-6">
+                                <h2 className="text-2xl font-bold text-white">Settle Up</h2>
+                                <button onClick={() => setIsSettleOpen(false)} className="text-gray-500 hover:text-white">
+                                    <X size={24} />
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleSettleUp} className="space-y-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Payer (Who paid?)</label>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {allMembers.map(m => (
+                                            <div
+                                                key={m}
+                                                onClick={() => setSettlePayer(m)}
+                                                className={`cursor-pointer p-2 rounded-lg text-center text-sm border transition-all ${settlePayer === m ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400'}`}
+                                            >
+                                                {m}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Receiver (Who got paid?)</label>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {allMembers.map(m => (
+                                            <div
+                                                key={m}
+                                                onClick={() => setSettleReceiver(m)}
+                                                className={`cursor-pointer p-2 rounded-lg text-center text-sm border transition-all ${settleReceiver === m ? 'bg-accent-green border-accent-green text-white' : 'bg-white-5 border-transparent text-gray-400'}`}
+                                            >
+                                                {m}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Amount</label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white font-bold">₹</span>
+                                        <Input
+                                            type="number"
+                                            placeholder="0.00"
+                                            className="pl-8"
+                                            value={settleAmount}
+                                            onChange={(e) => setSettleAmount(e.target.value)}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                <Button type="submit" className="w-full py-3">
+                                    Record Payment
+                                </Button>
+                            </form>
                         </motion.div>
                     </div>
                 )}

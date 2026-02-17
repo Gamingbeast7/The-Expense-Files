@@ -200,6 +200,32 @@ export function ExpenseProvider({ children }) {
         }
     };
 
+    const updateGroupExpense = async (groupId, expenseId, data) => {
+        if (!currentUser) return;
+        try {
+            const expenseRef = doc(db, "groups", groupId, "expenses", expenseId);
+            await updateDoc(expenseRef, data);
+
+            // If syncToPersonal was true, we should probably update the personal expense too?
+            // This is complex as we don't link them by ID easily. 
+            // For now, we'll leave personal sync as a "copy" operation that doesn't sync updates back.
+            // Future improvement: Store personalExpenseId in group expense to allow sync.
+        } catch (e) {
+            console.error("Error updating group expense: ", e);
+            throw e;
+        }
+    };
+
+    const deleteGroupExpense = async (groupId, expenseId) => {
+        if (!currentUser) return;
+        try {
+            await deleteDoc(doc(db, "groups", groupId, "expenses", expenseId));
+        } catch (e) {
+            console.error("Error deleting group expense: ", e);
+            throw e;
+        }
+    };
+
     const updateUser = async (name) => {
         // In a real app we might update the Firebase Auth profile or a custom user document
         // For now, just local state update for UI, and maybe custom doc
@@ -425,6 +451,8 @@ export function ExpenseProvider({ children }) {
             groups,
             createGroup,
             addGroupExpense,
+            updateGroupExpense,
+            deleteGroupExpense,
             groupExpenses,
             fetchGroupExpenses,
             currentGroup,
