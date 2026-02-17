@@ -60,6 +60,18 @@ export function Groups() {
         setSearchResults([]);
     };
 
+    const handleCreateDemoGroup = async () => {
+        const demoFriends = [
+            { uid: "demo1", username: "alice", displayName: "Alice" },
+            { uid: "demo2", username: "bob", displayName: "Bob" },
+            { uid: "demo3", username: "charlie", displayName: "Charlie" },
+            { uid: "demo4", username: "david", displayName: "David" },
+            { uid: "demo5", username: "eve", displayName: "Eve" },
+            { uid: "demo6", username: "frank", displayName: "Frank" },
+        ];
+        await createGroup("Trip to Goa (Demo)", demoFriends);
+    };
+
     return (
         <div className="max-w-4xl mx-auto pb-20">
             <BackButton />
@@ -172,9 +184,9 @@ export function Groups() {
                                             <div className="text-gray-500">@</div>
                                         </div>
                                         <Input
-                                            placeholder="username"
+                                            placeholder="Search username or email"
                                             value={searchInput}
-                                            onChange={(e) => setSearchInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                                            onChange={(e) => setSearchInput(e.target.value.toLowerCase())}
                                             className="pl-8"
                                         />
                                         {isSearching && (
