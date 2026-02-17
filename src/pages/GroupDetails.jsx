@@ -396,17 +396,37 @@ export function GroupDetails() {
                                         {allMembers.map(m => (
                                             <div
                                                 key={m}
-                                                onClick={() => { setPaidBy(m); setIsMultiPayer(false); }}
+                                                onClick={() => {
+                                                    if (isMultiPayer) {
+                                                        const exists = payers.find(p => p.member === m);
+                                                        if (exists) {
+                                                            setPayers(payers.filter(p => p.member !== m));
+                                                        } else {
+                                                            setPayers([...payers, { member: m, amount: '' }]);
+                                                        }
+                                                    } else {
+                                                        setPaidBy(m);
+                                                    }
+                                                }}
                                                 className={`
                                                     cursor-pointer p-2 rounded-lg text-center text-sm border transition-all
-                                                    ${!isMultiPayer && paidBy === m ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400 hover:bg-white-10'}
+                                                    ${(!isMultiPayer && paidBy === m) || (isMultiPayer && payers.some(p => p.member === m))
+                                                        ? 'bg-accent-blue border-accent-blue text-white'
+                                                        : 'bg-white-5 border-transparent text-gray-400 hover:bg-white-10'
+                                                    }
                                                 `}
                                             >
                                                 {m}
                                             </div>
                                         ))}
                                         <div
-                                            onClick={() => setIsMultiPayer(true)}
+                                            onClick={() => {
+                                                if (!isMultiPayer) {
+                                                    // Initialize payers with current selection
+                                                    setPayers([{ member: paidBy, amount: amount }]);
+                                                }
+                                                setIsMultiPayer(!isMultiPayer);
+                                            }}
                                             className={`
                                                 cursor-pointer p-2 rounded-lg text-center text-sm border transition-all
                                                 ${isMultiPayer ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400 hover:bg-white-10'}
@@ -417,25 +437,26 @@ export function GroupDetails() {
                                     </div>
                                     {isMultiPayer && (
                                         <div className="mt-3 space-y-2 bg-white-5 p-3 rounded-xl">
-                                            <p className="text-xs text-gray-400 mb-2">Enter amount paid by each person:</p>
-                                            {allMembers.map(m => (
-                                                <div key={m} className="flex items-center justify-between">
-                                                    <span className="text-sm text-white">{m}</span>
+                                            <p className="text-xs text-gray-400 mb-2">Select people above and enter amounts:</p>
+                                            {payers.length === 0 && <p className="text-xs text-gray-500 italic">No payers selected</p>}
+                                            {payers.map(p => (
+                                                <div key={p.member} className="flex items-center justify-between">
+                                                    <span className="text-sm text-white">{p.member}</span>
                                                     <Input
                                                         type="number"
                                                         placeholder="0"
                                                         className="w-24 h-8 text-right"
-                                                        value={payers.find(p => p.member === m)?.amount || ''}
+                                                        value={p.amount}
                                                         onChange={(e) => {
-                                                            const val = parseFloat(e.target.value) || 0;
-                                                            const newPayers = payers.filter(p => p.member !== m);
-                                                            if (val > 0) newPayers.push({ member: m, amount: val });
+                                                            const val = e.target.value;
+                                                            // Keep as string to allow typing decimals, parse only for total
+                                                            const newPayers = payers.map(item =>
+                                                                item.member === p.member ? { ...item, amount: val } : item
+                                                            );
                                                             setPayers(newPayers);
-                                                            // Auto-sum amount if 0 or manual overridden? 
-                                                            // Better to let user manually type total or auto-sum total.
-                                                            // Let's auto-update total 'Amount' field for convenience
-                                                            const total = newPayers.reduce((acc, curr) => acc + curr.amount, 0);
-                                                            setAmount(total.toString());
+
+                                                            const total = newPayers.reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);
+                                                            setAmount(total > 0 ? total.toString() : "");
                                                         }}
                                                     />
                                                 </div>
