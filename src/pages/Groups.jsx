@@ -30,8 +30,7 @@ export function Groups() {
             setIsSearching(true);
             try {
                 const results = await searchUsers(searchInput);
-                // Filter out already selected friends
-                setSearchResults(results.filter(r => !selectedFriends.some(f => f.uid === r.uid)));
+                setSearchResults(results);
             } catch (e) {
                 console.error("Search failed", e);
             }
@@ -39,12 +38,14 @@ export function Groups() {
         };
         const timeout = setTimeout(search, 500);
         return () => clearTimeout(timeout);
-    }, [searchInput, searchUsers, selectedFriends]);
+    }, [searchInput, searchUsers]);
 
     const handleAddFriend = (user) => {
-        setSelectedFriends([...selectedFriends, user]);
-        setSearchInput("");
-        setSearchResults([]);
+        // Prevent adding duplicates if clicked quickly
+        if (!selectedFriends.some(f => f.uid === user.uid)) {
+            setSelectedFriends([...selectedFriends, user]);
+        }
+        // Don't clear search input
     };
 
     const handleCreateGroup = async (e) => {
@@ -55,6 +56,8 @@ export function Groups() {
         setIsCreateOpen(false);
         setNewGroupName("");
         setSelectedFriends([]);
+        setSearchInput("");
+        setSearchResults([]);
     };
 
     return (
@@ -137,6 +140,25 @@ export function Groups() {
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-400 mb-2">Add Friends (Search by Username)</label>
+
+                                    {/* Selected Friends - Moved Above Input */}
+                                    {selectedFriends.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mb-3 bg-white-5 p-2 rounded-xl border border-white-5">
+                                            {selectedFriends.map((friend) => (
+                                                <div key={friend.uid} className="bg-accent-blue/20 text-accent-blue px-3 py-1 rounded-full text-sm flex items-center gap-2 border border-accent-blue/20">
+                                                    @{friend.username}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedFriends(selectedFriends.filter((f) => f.uid !== friend.uid))}
+                                                        className="hover:text-white transition-colors"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
                                     <div className="relative mb-3">
                                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
                                             <div className="text-gray-500">@</div>
@@ -157,42 +179,26 @@ export function Groups() {
                                     {/* Search Results */}
                                     {searchResults.length > 0 && (
                                         <div className="mb-4 space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                                            {searchResults.map(user => (
-                                                <div
-                                                    key={user.uid}
-                                                    onClick={() => handleAddFriend(user)}
-                                                    className="flex items-center justify-between p-2 rounded-xl hover:bg-white-5 cursor-pointer transition-colors border border-transparent hover:border-white-5"
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">
-                                                            {user.displayName ? user.displayName[0] : user.username[0]}
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-sm font-medium text-white">{user.displayName || "User"}</p>
-                                                            <p className="text-xs text-gray-500">@{user.username}</p>
-                                                        </div>
-                                                    </div>
-                                                    <Plus size={16} className="text-accent-blue" />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-
-                                    {/* Selected Friends */}
-                                    {selectedFriends.length > 0 && (
-                                        <div className="flex flex-wrap gap-2">
-                                            {selectedFriends.map((friend) => (
-                                                <div key={friend.uid} className="bg-accent-blue/20 text-accent-blue px-3 py-1 rounded-full text-sm flex items-center gap-2 border border-accent-blue/20">
-                                                    @{friend.username}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setSelectedFriends(selectedFriends.filter((f) => f.uid !== friend.uid))}
-                                                        className="hover:text-white transition-colors"
+                                            {searchResults
+                                                .filter(user => !selectedFriends.some(f => f.uid === user.uid))
+                                                .map(user => (
+                                                    <div
+                                                        key={user.uid}
+                                                        onClick={() => handleAddFriend(user)}
+                                                        className="flex items-center justify-between p-2 rounded-xl hover:bg-white-5 cursor-pointer transition-colors border border-transparent hover:border-white-5"
                                                     >
-                                                        <X size={14} />
-                                                    </button>
-                                                </div>
-                                            ))}
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">
+                                                                {user.displayName ? user.displayName[0] : user.username[0]}
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-sm font-medium text-white">{user.displayName || "User"}</p>
+                                                                <p className="text-xs text-gray-500">@{user.username}</p>
+                                                            </div>
+                                                        </div>
+                                                        <Plus size={16} className="text-accent-blue" />
+                                                    </div>
+                                                ))}
                                         </div>
                                     )}
                                 </div>
