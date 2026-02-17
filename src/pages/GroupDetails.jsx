@@ -154,6 +154,15 @@ export function GroupDetails() {
         e.preventDefault();
         if ((!title && !editingExpense) || !amount) return;
 
+        // Validation for Multi-Payer
+        if (isMultiPayer) {
+            const totalPaid = payers.reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);
+            if (Math.abs(totalPaid - parseFloat(amount)) > 0.01) {
+                alert(`Total payments (₹${totalPaid}) must match the expense amount (₹${amount})`);
+                return;
+            }
+        }
+
         const expenseData = {
             title,
             amount: parseFloat(amount),
@@ -391,285 +400,310 @@ export function GroupDetails() {
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-2">Paid By</label>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {allMembers.map(m => (
-                                            <div
-                                                key={m}
-                                                onClick={() => {
-                                                    if (isMultiPayer) {
-                                                        const exists = payers.find(p => p.member === m);
-                                                        if (exists) {
-                                                            setPayers(payers.filter(p => p.member !== m));
-                                                        } else {
-                                                            setPayers([...payers, { member: m, amount: '' }]);
-                                                        }
-                                                    } else {
-                                                        setPaidBy(m);
-                                                    }
-                                                }}
-                                                className={`
-                                                    cursor-pointer p-2 rounded-lg text-center text-sm border transition-all
-                                                    ${(!isMultiPayer && paidBy === m) || (isMultiPayer && payers.some(p => p.member === m))
-                                                        ? 'bg-accent-blue border-accent-blue text-white'
-                                                        : 'bg-white-5 border-transparent text-gray-400 hover:bg-white-10'
-                                                    }
-                                                `}
-                                            >
-                                                {m}
-                                            </div>
-                                        ))}
+                                    <div className="flex justify-between items-center mb-2">
+                                        <label className="text-sm font-medium text-gray-400">Paid By</label>
                                         <div
                                             onClick={() => {
                                                 if (!isMultiPayer) {
-                                                    // Initialize payers with current selection
                                                     setPayers([{ member: paidBy, amount: amount }]);
                                                 }
                                                 setIsMultiPayer(!isMultiPayer);
                                             }}
-                                            className={`
-                                                cursor-pointer p-2 rounded-lg text-center text-sm border transition-all
-                                                ${isMultiPayer ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400 hover:bg-white-10'}
-                                            `}
+                                            className="flex items-center gap-2 cursor-pointer"
                                         >
-                                            Multiple
+                                            <span className={`text-xs ${isMultiPayer ? 'text-accent-blue font-bold' : 'text-gray-500'}`}>Multiple people?</span>
+                                            <div className={`w-8 h-4 rounded-full transition-colors ${isMultiPayer ? 'bg-accent-blue' : 'bg-white-10'} relative`}>
+                                                <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all shadow-sm ${isMultiPayer ? 'left-4.5' : 'left-0.5'}`} />
+                                            </div>
                                         </div>
                                     </div>
-                                    {isMultiPayer && (
-                                        <div className="mt-3 space-y-2 bg-white-5 p-3 rounded-xl">
-                                            <p className="text-xs text-gray-400 mb-2">Select people above and enter amounts:</p>
-                                            {payers.length === 0 && <p className="text-xs text-gray-500 italic">No payers selected</p>}
-                                            {payers.map(p => (
-                                                <div key={p.member} className="flex items-center justify-between">
-                                                    <span className="text-sm text-white">{p.member}</span>
-                                                    <Input
-                                                        type="number"
-                                                        placeholder="0"
-                                                        className="w-24 h-8 text-right"
-                                                        value={p.amount}
-                                                        onChange={(e) => {
-                                                            const val = e.target.value;
-                                                            // Keep as string to allow typing decimals, parse only for total
-                                                            const newPayers = payers.map(item =>
-                                                                item.member === p.member ? { ...item, amount: val } : item
-                                                            );
-                                                            setPayers(newPayers);
 
-                                                            const total = newPayers.reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);
-                                                            setAmount(total > 0 ? total.toString() : "");
-                                                        }}
-                                                    />
+                                    {!isMultiPayer ? (
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {allMembers.map(m => (
+                                                <div
+                                                    key={m}
+                                                    onClick={() => setPaidBy(m)}
+                                                    className={`
+                                                        cursor-pointer p-2 rounded-lg text-center text-sm border transition-all
+                                                        ${paidBy === m ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400 hover:bg-white-10'}
+                                                    `}
+                                                >
+                                                    {m}
                                                 </div>
                                             ))}
                                         </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {allMembers.map(m => (
+                                                    <div
+                                                        key={m}
+                                                        onClick={() => {
+                                                            const exists = payers.find(p => p.member === m);
+                                                            if (exists) {
+                                                                setPayers(payers.filter(p => p.member !== m));
+                                                            } else {
+                                                                setPayers([...payers, { member: m, amount: '' }]);
+                                                            }
+                                                        }}
+                                                        className={`
+                                                            cursor-pointer p-2 rounded-lg text-center text-sm border transition-all
+                                                            ${payers.some(p => p.member === m) ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400 hover:bg-white-10'}
+                                                        `}
+                                                    >
+                                                        {m}
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {payers.length > 0 && (
+                                                <div className="bg-white-5 p-3 rounded-xl space-y-2">
+                                                    {payers.map(p => (
+                                                        <div key={p.member} className="flex items-center justify-between">
+                                                            <span className="text-sm text-white">{p.member}</span>
+                                                            <Input
+                                                                type="number"
+                                                                placeholder="0"
+                                                                className="w-24 h-8 text-right"
+                                                                value={p.amount}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    const newPayers = payers.map(item =>
+                                                                        item.member === p.member ? { ...item, amount: val } : item
+                                                                    );
+                                                                    setPayers(newPayers);
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    ))}
+                                                    <div className="pt-2 border-t border-white-10 flex justify-between text-xs">
+                                                        <span className="text-gray-400">Total Entered:</span>
+                                                        <span className={Math.abs(payers.reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0) - parseFloat(amount || 0)) < 0.01 ? "text-green-400 font-bold" : "text-red-400 font-bold"}>
+                                                            ₹{payers.reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0).toFixed(2)} / {parseFloat(amount || 0).toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     )}
+                                                    />
                                 </div>
+                                            ))}
+                            </div>
+                                    )}
+                    </div>
 
                                 {/* Split With */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-2">Split With</label>
-                                    <div className="flex flex-wrap gap-2">
-                                        {allMembers.map(m => (
-                                            <div
-                                                key={m}
-                                                onClick={() => {
-                                                    if (involvedMembers.includes(m)) {
-                                                        // Prevent removing self if only 1 left? No, allow full control
-                                                        setInvolvedMembers(involvedMembers.filter(im => im !== m));
-                                                    } else {
-                                                        setInvolvedMembers([...involvedMembers, m]);
-                                                    }
-                                                }}
-                                                className={`
+                <div>
+                    <label className="block text-sm font-medium text-gray-400 mb-2">Split With</label>
+                    <div className="flex flex-wrap gap-2">
+                        {allMembers.map(m => (
+                            <div
+                                key={m}
+                                onClick={() => {
+                                    if (involvedMembers.includes(m)) {
+                                        // Prevent removing self if only 1 left? No, allow full control
+                                        setInvolvedMembers(involvedMembers.filter(im => im !== m));
+                                    } else {
+                                        setInvolvedMembers([...involvedMembers, m]);
+                                    }
+                                }}
+                                className={`
                                                     cursor-pointer px-3 py-1 rounded-full text-xs border transition-all select-none flex items-center gap-1
                                                     ${involvedMembers.includes(m) ? 'bg-accent-blue/20 border-accent-blue text-accent-blue' : 'bg-white-5 border-transparent text-gray-500'}
                                                 `}
-                                            >
-                                                {m}
-                                                {involvedMembers.includes(m) && <Check size={12} />}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Sync to Personal */}
-                                <div className="flex items-center gap-3 pt-2">
-                                    <input
-                                        type="checkbox"
-                                        id="sync"
-                                        checked={syncToPersonal}
-                                        onChange={(e) => setSyncToPersonal(e.target.checked)}
-                                        className="w-5 h-5 rounded border-gray-600 bg-white-5 text-accent-blue focus:ring-accent-blue"
-                                    />
-                                    <label htmlFor="sync" className="text-sm text-gray-300 cursor-pointer select-none">
-                                        Also add to my personal expenses
-                                    </label>
-                                </div>
-
-                                <Button type="submit" className="w-full py-3">
-                                    Add Expense
-                                </Button>
-                            </form>
-                        </motion.div>
-                    </div>
-                )}
-
-                {/* Group Settings Modal */}
-                {isSettingsOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-6 w-full max-w-md"
-                        >
-                            <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-2xl font-bold text-white">Group Settings</h2>
-                                <button onClick={() => setIsSettingsOpen(false)} className="text-gray-500 hover:text-white">
-                                    <X size={24} />
-                                </button>
+                            >
+                                {m}
+                                {involvedMembers.includes(m) && <Check size={12} />}
                             </div>
+                        ))}
+                    </div>
+                </div>
 
-                            <div className="space-y-6">
-                                {/* Edit Name */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-2">Group Name</label>
-                                    <div className="flex gap-2">
-                                        <Input
-                                            value={editName}
-                                            onChange={(e) => setEditName(e.target.value)}
-                                        />
-                                        <Button onClick={handleUpdateName} variant="secondary">Save</Button>
-                                    </div>
+                {/* Sync to Personal */}
+                <div className="flex items-center gap-3 pt-2">
+                    <input
+                        type="checkbox"
+                        id="sync"
+                        checked={syncToPersonal}
+                        onChange={(e) => setSyncToPersonal(e.target.checked)}
+                        className="w-5 h-5 rounded border-gray-600 bg-white-5 text-accent-blue focus:ring-accent-blue"
+                    />
+                    <label htmlFor="sync" className="text-sm text-gray-300 cursor-pointer select-none">
+                        Also add to my personal expenses
+                    </label>
+                </div>
+
+                <Button type="submit" className="w-full py-3">
+                    Add Expense
+                </Button>
+            </form>
+        </motion.div>
+                    </div >
+                )
+}
+
+{/* Group Settings Modal */ }
+{
+    isSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-6 w-full max-w-md"
+            >
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-white">Group Settings</h2>
+                    <button onClick={() => setIsSettingsOpen(false)} className="text-gray-500 hover:text-white">
+                        <X size={24} />
+                    </button>
+                </div>
+
+                <div className="space-y-6">
+                    {/* Edit Name */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Group Name</label>
+                        <div className="flex gap-2">
+                            <Input
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                            />
+                            <Button onClick={handleUpdateName} variant="secondary">Save</Button>
+                        </div>
+                    </div>
+
+                    {/* Add Member */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Add Member</label>
+                        <div className="relative mb-3">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                <div className="text-gray-500">@</div>
+                            </div>
+                            <Input
+                                placeholder="Search username to add"
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                                className="pl-8"
+                            />
+                            {isSearching && (
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                                 </div>
-
-                                {/* Add Member */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-2">Add Member</label>
-                                    <div className="relative mb-3">
-                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
-                                            <div className="text-gray-500">@</div>
-                                        </div>
-                                        <Input
-                                            placeholder="Search username to add"
-                                            value={searchInput}
-                                            onChange={(e) => setSearchInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                                            className="pl-8"
-                                        />
-                                        {isSearching && (
-                                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                                            </div>
-                                        )}
-                                    </div>
-                                    {/* Results */}
-                                    {searchResults.length > 0 && (
-                                        <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar bg-white-5 rounded-xl p-2">
-                                            {searchResults.map(user => (
-                                                <div
-                                                    key={user.uid}
-                                                    onClick={() => handleAddNewMember(user)}
-                                                    className="flex items-center justify-between p-2 rounded-lg hover:bg-white-10 cursor-pointer transition-colors"
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">
-                                                            {user.displayName ? user.displayName[0] : user.username[0]}
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-sm font-medium text-white">{user.displayName || "User"}</p>
-                                                            <p className="text-xs text-gray-500">@{user.username}</p>
-                                                        </div>
-                                                    </div>
-                                                    <UserPlus size={16} className="text-accent-green" />
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Delete Group */}
-                                <div className="pt-4 border-t border-white-10">
-                                    <Button
-                                        onClick={handleDeleteGroup}
-                                        className="w-full flex items-center justify-center gap-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 border-red-500/20"
+                            )}
+                        </div>
+                        {/* Results */}
+                        {searchResults.length > 0 && (
+                            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar bg-white-5 rounded-xl p-2">
+                                {searchResults.map(user => (
+                                    <div
+                                        key={user.uid}
+                                        onClick={() => handleAddNewMember(user)}
+                                        className="flex items-center justify-between p-2 rounded-lg hover:bg-white-10 cursor-pointer transition-colors"
                                     >
-                                        <Trash2 size={18} />
-                                        Delete Group
-                                    </Button>
-                                </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">
+                                                {user.displayName ? user.displayName[0] : user.username[0]}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-white">{user.displayName || "User"}</p>
+                                                <p className="text-xs text-gray-500">@{user.username}</p>
+                                            </div>
+                                        </div>
+                                        <UserPlus size={16} className="text-accent-green" />
+                                    </div>
+                                ))}
                             </div>
-                        </motion.div>
+                        )}
                     </div>
-                )}
 
-                {/* Settle Up Modal */}
-                {isSettleOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-6 w-full max-w-md"
+                    {/* Delete Group */}
+                    <div className="pt-4 border-t border-white-10">
+                        <Button
+                            onClick={handleDeleteGroup}
+                            className="w-full flex items-center justify-center gap-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 border-red-500/20"
                         >
-                            <div className="flex justify-between items-center mb-6">
-                                <h2 className="text-2xl font-bold text-white">Settle Up</h2>
-                                <button onClick={() => setIsSettleOpen(false)} className="text-gray-500 hover:text-white">
-                                    <X size={24} />
-                                </button>
-                            </div>
-
-                            <form onSubmit={handleSettleUp} className="space-y-6">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-2">Payer (Who paid?)</label>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {allMembers.map(m => (
-                                            <div
-                                                key={m}
-                                                onClick={() => setSettlePayer(m)}
-                                                className={`cursor-pointer p-2 rounded-lg text-center text-sm border transition-all ${settlePayer === m ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400'}`}
-                                            >
-                                                {m}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-2">Receiver (Who got paid?)</label>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {allMembers.map(m => (
-                                            <div
-                                                key={m}
-                                                onClick={() => setSettleReceiver(m)}
-                                                className={`cursor-pointer p-2 rounded-lg text-center text-sm border transition-all ${settleReceiver === m ? 'bg-accent-green border-accent-green text-white' : 'bg-white-5 border-transparent text-gray-400'}`}
-                                            >
-                                                {m}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-2">Amount</label>
-                                    <div className="relative">
-                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white font-bold">₹</span>
-                                        <Input
-                                            type="number"
-                                            placeholder="0.00"
-                                            className="pl-8"
-                                            value={settleAmount}
-                                            onChange={(e) => setSettleAmount(e.target.value)}
-                                            required
-                                        />
-                                    </div>
-                                </div>
-
-                                <Button type="submit" className="w-full py-3">
-                                    Record Payment
-                                </Button>
-                            </form>
-                        </motion.div>
+                            <Trash2 size={18} />
+                            Delete Group
+                        </Button>
                     </div>
-                )}
-            </AnimatePresence>
+                </div>
+            </motion.div>
         </div>
+    )
+}
+
+{/* Settle Up Modal */ }
+{
+    isSettleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-6 w-full max-w-md"
+            >
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-white">Settle Up</h2>
+                    <button onClick={() => setIsSettleOpen(false)} className="text-gray-500 hover:text-white">
+                        <X size={24} />
+                    </button>
+                </div>
+
+                <form onSubmit={handleSettleUp} className="space-y-6">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Payer (Who paid?)</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {allMembers.map(m => (
+                                <div
+                                    key={m}
+                                    onClick={() => setSettlePayer(m)}
+                                    className={`cursor-pointer p-2 rounded-lg text-center text-sm border transition-all ${settlePayer === m ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400'}`}
+                                >
+                                    {m}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Receiver (Who got paid?)</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {allMembers.map(m => (
+                                <div
+                                    key={m}
+                                    onClick={() => setSettleReceiver(m)}
+                                    className={`cursor-pointer p-2 rounded-lg text-center text-sm border transition-all ${settleReceiver === m ? 'bg-accent-green border-accent-green text-white' : 'bg-white-5 border-transparent text-gray-400'}`}
+                                >
+                                    {m}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Amount</label>
+                        <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white font-bold">₹</span>
+                            <Input
+                                type="number"
+                                placeholder="0.00"
+                                className="pl-8"
+                                value={settleAmount}
+                                onChange={(e) => setSettleAmount(e.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <Button type="submit" className="w-full py-3">
+                        Record Payment
+                    </Button>
+                </form>
+            </motion.div>
+        </div>
+    )
+}
+            </AnimatePresence >
+        </div >
     );
 }
