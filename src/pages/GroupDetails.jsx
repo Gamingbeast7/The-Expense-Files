@@ -171,7 +171,7 @@ export function GroupDetails() {
             payers: isMultiPayer ? payers : [],
             splitType,
             involvedMembers,
-            syncToPersonal,
+            syncToPersonal: true,
             type: "EXPENSE"
         };
 
@@ -516,188 +516,176 @@ export function GroupDetails() {
                                     </div>
                                 </div>
 
-                                {/* Sync to Personal */}
-                                <div className="flex items-center gap-3 pt-2">
-                                    <input
-                                        type="checkbox"
-                                        id="sync"
-                                        checked={syncToPersonal}
-                                        onChange={(e) => setSyncToPersonal(e.target.checked)}
-                                        className="w-5 h-5 rounded border-gray-600 bg-white-5 text-accent-blue focus:ring-accent-blue"
-                                    />
-                                    <label htmlFor="sync" className="text-sm text-gray-300 cursor-pointer select-none">
-                                        Also add to my personal expenses
-                                    </label>
-                                </div>
+                            </div>
 
-                                <Button type="submit" className="w-full py-3">
-                                    Add Expense
-                                </Button>
-                            </form>
-                        </motion.div>
+                            <Button type="submit" className="w-full py-3">
+                                Add Expense
+                            </Button>
+                        </form>
+                    </motion.div>
                     </div >
-                )
-                }
+    )
+}
 
-                {/* Group Settings Modal */}
-                {
-                    isSettingsOpen && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-6 w-full max-w-md"
-                            >
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-2xl font-bold text-white">Group Settings</h2>
-                                    <button onClick={() => setIsSettingsOpen(false)} className="text-gray-500 hover:text-white">
-                                        <X size={24} />
-                                    </button>
-                                </div>
+{/* Group Settings Modal */ }
+{
+    isSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-6 w-full max-w-md"
+            >
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-white">Group Settings</h2>
+                    <button onClick={() => setIsSettingsOpen(false)} className="text-gray-500 hover:text-white">
+                        <X size={24} />
+                    </button>
+                </div>
 
-                                <div className="space-y-6">
-                                    {/* Edit Name */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-400 mb-2">Group Name</label>
-                                        <div className="flex gap-2">
-                                            <Input
-                                                value={editName}
-                                                onChange={(e) => setEditName(e.target.value)}
-                                            />
-                                            <Button onClick={handleUpdateName} variant="secondary">Save</Button>
-                                        </div>
-                                    </div>
-
-                                    {/* Add Member */}
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-400 mb-2">Add Member</label>
-                                        <div className="relative mb-3">
-                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
-                                                <div className="text-gray-500">@</div>
-                                            </div>
-                                            <Input
-                                                placeholder="Search username to add"
-                                                value={searchInput}
-                                                onChange={(e) => setSearchInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                                                className="pl-8"
-                                            />
-                                            {isSearching && (
-                                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        {/* Results */}
-                                        {searchResults.length > 0 && (
-                                            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar bg-white-5 rounded-xl p-2">
-                                                {searchResults.map(user => (
-                                                    <div
-                                                        key={user.uid}
-                                                        onClick={() => handleAddNewMember(user)}
-                                                        className="flex items-center justify-between p-2 rounded-lg hover:bg-white-10 cursor-pointer transition-colors"
-                                                    >
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-8 h-8 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">
-                                                                {user.displayName ? user.displayName[0] : user.username[0]}
-                                                            </div>
-                                                            <div>
-                                                                <p className="text-sm font-medium text-white">{user.displayName || "User"}</p>
-                                                                <p className="text-xs text-gray-500">@{user.username}</p>
-                                                            </div>
-                                                        </div>
-                                                        <UserPlus size={16} className="text-accent-green" />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Delete Group */}
-                                    <div className="pt-4 border-t border-white-10">
-                                        <Button
-                                            onClick={handleDeleteGroup}
-                                            className="w-full flex items-center justify-center gap-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 border-red-500/20"
-                                        >
-                                            <Trash2 size={18} />
-                                            Delete Group
-                                        </Button>
-                                    </div>
-                                </div>
-                            </motion.div>
+                <div className="space-y-6">
+                    {/* Edit Name */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Group Name</label>
+                        <div className="flex gap-2">
+                            <Input
+                                value={editName}
+                                onChange={(e) => setEditName(e.target.value)}
+                            />
+                            <Button onClick={handleUpdateName} variant="secondary">Save</Button>
                         </div>
-                    )
-                }
+                    </div>
 
-                {/* Settle Up Modal */}
-                {
-                    isSettleOpen && (
-                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-6 w-full max-w-md"
-                            >
-                                <div className="flex justify-between items-center mb-6">
-                                    <h2 className="text-2xl font-bold text-white">Settle Up</h2>
-                                    <button onClick={() => setIsSettleOpen(false)} className="text-gray-500 hover:text-white">
-                                        <X size={24} />
-                                    </button>
+                    {/* Add Member */}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Add Member</label>
+                        <div className="relative mb-3">
+                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                <div className="text-gray-500">@</div>
+                            </div>
+                            <Input
+                                placeholder="Search username to add"
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                                className="pl-8"
+                            />
+                            {isSearching && (
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                                 </div>
-
-                                <form onSubmit={handleSettleUp} className="space-y-6">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-400 mb-2">Payer (Who paid?)</label>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            {allMembers.map(m => (
-                                                <div
-                                                    key={m}
-                                                    onClick={() => setSettlePayer(m)}
-                                                    className={`cursor-pointer p-2 rounded-lg text-center text-sm border transition-all ${settlePayer === m ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400'}`}
-                                                >
-                                                    {m}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-400 mb-2">Receiver (Who got paid?)</label>
-                                        <div className="grid grid-cols-3 gap-2">
-                                            {allMembers.map(m => (
-                                                <div
-                                                    key={m}
-                                                    onClick={() => setSettleReceiver(m)}
-                                                    className={`cursor-pointer p-2 rounded-lg text-center text-sm border transition-all ${settleReceiver === m ? 'bg-accent-green border-accent-green text-white' : 'bg-white-5 border-transparent text-gray-400'}`}
-                                                >
-                                                    {m}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-400 mb-2">Amount</label>
-                                        <div className="relative">
-                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white font-bold">₹</span>
-                                            <Input
-                                                type="number"
-                                                placeholder="0.00"
-                                                className="pl-8"
-                                                value={settleAmount}
-                                                onChange={(e) => setSettleAmount(e.target.value)}
-                                                required
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <Button type="submit" className="w-full py-3">
-                                        Record Payment
-                                    </Button>
-                                </form>
-                            </motion.div>
+                            )}
                         </div>
-                    )
-                }
+                        {/* Results */}
+                        {searchResults.length > 0 && (
+                            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar bg-white-5 rounded-xl p-2">
+                                {searchResults.map(user => (
+                                    <div
+                                        key={user.uid}
+                                        onClick={() => handleAddNewMember(user)}
+                                        className="flex items-center justify-between p-2 rounded-lg hover:bg-white-10 cursor-pointer transition-colors"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">
+                                                {user.displayName ? user.displayName[0] : user.username[0]}
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-medium text-white">{user.displayName || "User"}</p>
+                                                <p className="text-xs text-gray-500">@{user.username}</p>
+                                            </div>
+                                        </div>
+                                        <UserPlus size={16} className="text-accent-green" />
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Delete Group */}
+                    <div className="pt-4 border-t border-white-10">
+                        <Button
+                            onClick={handleDeleteGroup}
+                            className="w-full flex items-center justify-center gap-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 border-red-500/20"
+                        >
+                            <Trash2 size={18} />
+                            Delete Group
+                        </Button>
+                    </div>
+                </div>
+            </motion.div>
+        </div>
+    )
+}
+
+{/* Settle Up Modal */ }
+{
+    isSettleOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-6 w-full max-w-md"
+            >
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold text-white">Settle Up</h2>
+                    <button onClick={() => setIsSettleOpen(false)} className="text-gray-500 hover:text-white">
+                        <X size={24} />
+                    </button>
+                </div>
+
+                <form onSubmit={handleSettleUp} className="space-y-6">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Payer (Who paid?)</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {allMembers.map(m => (
+                                <div
+                                    key={m}
+                                    onClick={() => setSettlePayer(m)}
+                                    className={`cursor-pointer p-2 rounded-lg text-center text-sm border transition-all ${settlePayer === m ? 'bg-accent-blue border-accent-blue text-white' : 'bg-white-5 border-transparent text-gray-400'}`}
+                                >
+                                    {m}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Receiver (Who got paid?)</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {allMembers.map(m => (
+                                <div
+                                    key={m}
+                                    onClick={() => setSettleReceiver(m)}
+                                    className={`cursor-pointer p-2 rounded-lg text-center text-sm border transition-all ${settleReceiver === m ? 'bg-accent-green border-accent-green text-white' : 'bg-white-5 border-transparent text-gray-400'}`}
+                                >
+                                    {m}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-400 mb-2">Amount</label>
+                        <div className="relative">
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white font-bold">₹</span>
+                            <Input
+                                type="number"
+                                placeholder="0.00"
+                                className="pl-8"
+                                value={settleAmount}
+                                onChange={(e) => setSettleAmount(e.target.value)}
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <Button type="submit" className="w-full py-3">
+                        Record Payment
+                    </Button>
+                </form>
+            </motion.div>
+        </div>
+    )
+}
             </AnimatePresence >
         </div >
     );
