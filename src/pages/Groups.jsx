@@ -72,10 +72,15 @@ export function Groups() {
                         <h1 className="text-3xl font-bold text-white mb-2">Groups</h1>
                         <p className="text-gray-400">Manage your shared expenses.</p>
                     </div>
-                    <Button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-2 px-6 py-2.5 h-auto text-sm font-semibold shadow-lg shadow-accent-blue/20">
-                        <Plus size={18} strokeWidth={2.5} />
-                        New Group
-                    </Button>
+                    <div className="flex gap-3">
+                        <Button onClick={handleCreateDemoGroup} variant="secondary" className="text-sm">
+                            Demo Group
+                        </Button>
+                        <Button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-2 px-6 py-2.5 h-auto text-sm font-semibold shadow-lg shadow-accent-blue/20">
+                            <Plus size={18} strokeWidth={2.5} />
+                            New Group
+                        </Button>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -84,7 +89,10 @@ export function Groups() {
                             <Users size={48} className="mx-auto text-gray-500 mb-4" />
                             <h3 className="text-xl font-bold text-white mb-2">No Groups Yet</h3>
                             <p className="text-gray-400 mb-6">Create a group to split expenses with friends.</p>
-                            <Button onClick={() => setIsCreateOpen(true)} className="mx-auto">Create Group</Button>
+                            <div className="flex justify-center gap-4">
+                                <Button onClick={handleCreateDemoGroup} variant="secondary">Create Demo Group</Button>
+                                <Button onClick={() => setIsCreateOpen(true)}>Create Group</Button>
+                            </div>
                         </div>
                     ) : (
                         groups.map((group) => (

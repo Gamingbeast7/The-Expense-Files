@@ -323,15 +323,39 @@ export function ExpenseProvider({ children }) {
     }, [expenses]);
 
     const searchUsers = async (searchTerm) => {
-        // Query users where username >= searchTerm and username <= searchTerm + '\uf8ff'
-        // This is a standard Firestore prefix search technique
-        const q = query(
+        const lowerTerm = searchTerm.toLowerCase();
+        // Query users where username >= searchTerm
+        const qUsername = query(
             collection(db, "users"),
-            where("username", ">=", searchTerm),
-            where("username", "<=", searchTerm + '\uf8ff')
+            where("username", ">=", lowerTerm),
+            where("username", "<=", lowerTerm + '\uf8ff')
         );
-        const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+
+        // Query by email
+        const qEmail = query(
+            collection(db, "users"),
+            where("email", ">=", lowerTerm),
+            where("email", "<=", lowerTerm + '\uf8ff')
+        );
+
+        const [usernameSnap, emailSnap] = await Promise.all([
+            getDocs(qUsername),
+            getDocs(qEmail)
+        ]);
+
+        const results = new Map();
+
+        usernameSnap.docs.forEach(doc => {
+            results.set(doc.id, { uid: doc.id, ...doc.data() });
+        });
+
+        emailSnap.docs.forEach(doc => {
+            if (!results.has(doc.id)) {
+                results.set(doc.id, { uid: doc.id, ...doc.data() });
+            }
+        });
+
+        return Array.from(results.values());
     };
 
     const updateGroup = async (groupId, data) => {
