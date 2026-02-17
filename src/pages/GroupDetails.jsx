@@ -580,7 +580,6 @@ export function GroupDetails() {
                         </motion.div>
                     </div>
                 )}
-                )}
 
                 {/* Settle Up Modal */}
                 {isSettleOpen && (
