@@ -8,6 +8,8 @@ import { Goals } from "./pages/Goals";
 import { AddExpense } from "./pages/AddExpense";
 import { About } from "./pages/About";
 import { Login } from "./pages/Login";
+import { Groups } from "./pages/Groups";
+import { GroupDetails } from "./pages/GroupDetails";
 import { AnimatePresence } from "framer-motion";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ExpenseProvider } from "./context/ExpenseContext";
@@ -76,6 +78,20 @@ function AppContent() {
           <PrivateRoute>
             <Layout>
               <About />
+            </Layout>
+          </PrivateRoute>
+        } />
+        <Route path="/groups" element={
+          <PrivateRoute>
+            <Layout>
+              <Groups />
+            </Layout>
+          </PrivateRoute>
+        } />
+        <Route path="/groups/:groupId" element={
+          <PrivateRoute>
+            <Layout>
+              <GroupDetails />
             </Layout>
           </PrivateRoute>
         } />

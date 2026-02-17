@@ -43,16 +43,24 @@ export function Layout({ children }) {
                             <p className="text-gray-400 text-sm mt-1">Manage your finances with style.</p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => setIsProfileOpen(true)}
-                        className="h-10 w-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 border border-white-10 flex items-center justify-center hover:ring-2 hover:ring-accent-blue transition-all overflow-hidden"
-                    >
-                        {currentUser?.photoURL ? (
-                            <img src={currentUser.photoURL} alt={currentUser.displayName} className="w-full h-full object-cover" />
-                        ) : (
-                            <span className="text-xs font-bold text-white">{initials}</span>
-                        )}
-                    </button>
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => navigate("/groups")}
+                            className="bg-white-5 hover:bg-white-10 text-white px-4 py-2 rounded-xl transition-colors font-medium border border-white-5"
+                        >
+                            Groups
+                        </button>
+                        <button
+                            onClick={() => setIsProfileOpen(true)}
+                            className="h-10 w-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 border border-white-10 flex items-center justify-center hover:ring-2 hover:ring-accent-blue transition-all overflow-hidden"
+                        >
+                            {currentUser?.photoURL ? (
+                                <img src={currentUser.photoURL} alt={currentUser.displayName} className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-xs font-bold text-white">{initials}</span>
+                            )}
+                        </button>
+                    </div>
                 </motion.header>
                 {children}
                 <Footer />

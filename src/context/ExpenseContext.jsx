@@ -10,7 +10,8 @@ import {
     query,
     orderBy,
     setDoc,
-    getDoc
+    getDoc,
+    where
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "./AuthContext";
@@ -91,6 +92,80 @@ export function ExpenseProvider({ children }) {
             unsubscribeUser();
         };
     }, [currentUser]);
+
+    // Group Features State
+    const [groups, setGroups] = useState([]);
+    const [groupExpenses, setGroupExpenses] = useState([]);
+    const [currentGroup, setCurrentGroup] = useState(null);
+
+    // Fetch User's Groups
+    useEffect(() => {
+        if (!currentUser) {
+            setGroups([]);
+            return;
+        }
+
+        // In a real app, we'd query groups where 'members' array-contains currentUser.uid
+        // For MVP with "Virtual Friends", we just store groups under the user's document for now
+        // OR we create a top-level 'groups' collection if we want real sharing later.
+        // Let's go with top-level 'groups' collection where members include current user.
+
+        const q = query(collection(db, "groups"), where("members", "array-contains", currentUser.uid));
+        const unsubscribeGroups = onSnapshot(q, (snapshot) => {
+            const groupsData = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setGroups(groupsData);
+        });
+
+        return () => unsubscribeGroups();
+    }, [currentUser]);
+
+    const createGroup = async (name, friendNames) => {
+        if (!currentUser) return;
+        try {
+            // group members: current user + virtual friends
+            // We store virtual friends as simple strings in a 'friends' array
+            // Real members (authUser) in 'members' array
+            await addDoc(collection(db, "groups"), {
+                name,
+                members: [currentUser.uid],
+                friends: friendNames || [], // ["Alice", "Bob"]
+                createdBy: currentUser.uid,
+                createdAt: new Date()
+            });
+        } catch (e) {
+            console.error("Error creating group: ", e);
+            throw e;
+        }
+    };
+
+    const fetchGroupExpenses = (groupId) => {
+        const expensesRef = collection(db, "groups", groupId, "expenses");
+        return onSnapshot(query(expensesRef, orderBy("date", "desc")), (snapshot) => {
+            const data = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setGroupExpenses(data);
+        });
+    };
+
+    const addGroupExpense = async (groupId, expenseData) => {
+        // expenseData: { title, amount, date, paidBy, split: { "Me": 50, "Alice": 50 } }
+        if (!currentUser) return;
+        try {
+            await addDoc(collection(db, "groups", groupId, "expenses"), {
+                ...expenseData,
+                createdBy: currentUser.uid,
+                createdAt: new Date()
+            });
+        } catch (e) {
+            console.error("Error adding group expense: ", e);
+            throw e;
+        }
+    };
 
     const updateUser = async (name) => {
         // In a real app we might update the Firebase Auth profile or a custom user document
@@ -251,7 +326,15 @@ export function ExpenseProvider({ children }) {
             deleteGoal,
             user,
             updateUser,
-            loading
+            loading,
+            // Group Features
+            groups,
+            createGroup,
+            addGroupExpense,
+            groupExpenses,
+            fetchGroupExpenses,
+            currentGroup,
+            setCurrentGroup
         }}>
             {children}
         </ExpenseContext.Provider>
