@@ -166,14 +166,33 @@ export function ExpenseProvider({ children }) {
 
             // Sync to personal expenses if requested and user paid
             // We assume if "paidBy" is "Me" or currentUser.uid, then it's an expense for the user.
-            // Logic: Users usually want to track what THEY spent.
             if (expenseData.syncToPersonal && (expenseData.paidBy === "Me" || expenseData.paidBy === currentUser.uid)) {
-                await addExpense({
-                    title: `[Group] ${expenseData.title}`,
-                    amount: expenseData.amount, // Full amount they paid
-                    date: expenseData.date,
-                    category: "Shared", // Or let them choose, but default to Shared for now
-                });
+                let personalAmount = expenseData.amount;
+
+                // Calculate share if split is EQUAL
+                if ((expenseData.splitType === 'EQUAL' || !expenseData.splitType) && Array.isArray(expenseData.involvedMembers)) {
+                    const amIInvolved = expenseData.involvedMembers.includes('Me') ||
+                        expenseData.involvedMembers.includes(currentUser.uid) ||
+                        expenseData.involvedMembers.includes(currentUser.displayName);
+
+                    if (amIInvolved) {
+                        personalAmount = expenseData.amount / expenseData.involvedMembers.length;
+                    } else {
+                        // If paid by me but I'm not involved, strictly speaking my consumption is 0.
+                        // However, usually "Sync to personal" implies tracking my spending.
+                        // But based on user request "just add this amount to my personal spend", it implies share.
+                        personalAmount = 0;
+                    }
+                }
+
+                if (personalAmount > 0) {
+                    await addExpense({
+                        title: `[Group] ${expenseData.title}`,
+                        amount: parseFloat(personalAmount.toFixed(2)), // Ensure 2 decimal places
+                        date: expenseData.date,
+                        category: "Shared",
+                    });
+                }
             }
         } catch (e) {
             console.error("Error adding group expense: ", e);
