@@ -81,7 +81,7 @@ export function Groups() {
                             <Users size={48} className="mx-auto text-gray-500 mb-4" />
                             <h3 className="text-xl font-bold text-white mb-2">No Groups Yet</h3>
                             <p className="text-gray-400 mb-6">Create a group to split expenses with friends.</p>
-                            <Button onClick={() => setIsCreateOpen(true)}>Create Group</Button>
+                            <Button onClick={() => setIsCreateOpen(true)} className="mx-auto">Create Group</Button>
                         </div>
                     ) : (
                         groups.map((group) => (
