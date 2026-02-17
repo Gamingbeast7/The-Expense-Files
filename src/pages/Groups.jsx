@@ -9,27 +9,52 @@ import { useExpenses } from "../context/ExpenseContext";
 import { useNavigate } from "react-router-dom";
 
 export function Groups() {
-    const { groups, createGroup } = useExpenses();
+    const { groups, createGroup, searchUsers } = useExpenses();
     const navigate = useNavigate();
     const [iscreateOpen, setIsCreateOpen] = useState(false);
     const [newGroupName, setNewGroupName] = useState("");
-    const [friends, setFriends] = useState([]);
-    const [friendInput, setFriendInput] = useState("");
+    const [selectedFriends, setSelectedFriends] = useState([]); // [{uid, name, username}]
 
-    const handleAddFriend = () => {
-        if (friendInput.trim()) {
-            setFriends([...friends, friendInput.trim()]);
-            setFriendInput("");
-        }
+    // Search State
+    const [searchInput, setSearchInput] = useState("");
+    const [searchResults, setSearchResults] = useState([]);
+    const [isSearching, setIsSearching] = useState(false);
+
+    // Debounce Search
+    useEffect(() => {
+        const search = async () => {
+            if (searchInput.length < 3) {
+                setSearchResults([]);
+                return;
+            }
+            setIsSearching(true);
+            try {
+                const results = await searchUsers(searchInput);
+                // Filter out already selected friends
+                setSearchResults(results.filter(r => !selectedFriends.some(f => f.uid === r.uid)));
+            } catch (e) {
+                console.error("Search failed", e);
+            }
+            setIsSearching(false);
+        };
+        const timeout = setTimeout(search, 500);
+        return () => clearTimeout(timeout);
+    }, [searchInput, searchUsers, selectedFriends]);
+
+    const handleAddFriend = (user) => {
+        setSelectedFriends([...selectedFriends, user]);
+        setSearchInput("");
+        setSearchResults([]);
     };
 
     const handleCreateGroup = async (e) => {
         e.preventDefault();
         if (!newGroupName) return;
-        await createGroup(newGroupName, friends);
+        // Pass the full user objects (uid, name, username)
+        await createGroup(newGroupName, selectedFriends);
         setIsCreateOpen(false);
         setNewGroupName("");
-        setFriends([]);
+        setSelectedFriends([]);
     };
 
     return (
@@ -44,8 +69,8 @@ export function Groups() {
                         <h1 className="text-3xl font-bold text-white mb-2">Groups</h1>
                         <p className="text-gray-400">Manage your shared expenses.</p>
                     </div>
-                    <Button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-2">
-                        <Plus size={18} />
+                    <Button onClick={() => setIsCreateOpen(true)} className="flex items-center gap-2 px-6 py-2.5 h-auto text-sm font-semibold shadow-lg shadow-accent-blue/20">
+                        <Plus size={18} strokeWidth={2.5} />
                         New Group
                     </Button>
                 </div>
@@ -111,30 +136,65 @@ export function Groups() {
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-2">Add Friends (Virtual)</label>
-                                    <div className="flex gap-2 mb-3">
+                                    <label className="block text-sm font-medium text-gray-400 mb-2">Add Friends (Search by Username)</label>
+                                    <div className="relative mb-3">
+                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                            <div className="text-gray-500">@</div>
+                                        </div>
                                         <Input
-                                            placeholder="Friend's Name"
-                                            value={friendInput}
-                                            onChange={(e) => setFriendInput(e.target.value)}
-                                            onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddFriend())}
+                                            placeholder="username"
+                                            value={searchInput}
+                                            onChange={(e) => setSearchInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                                            className="pl-8"
                                         />
-                                        <Button type="button" onClick={handleAddFriend} variant="secondary">Add</Button>
-                                    </div>
-                                    <div className="flex flex-wrap gap-2">
-                                        {friends.map((friend, index) => (
-                                            <div key={index} className="bg-white-10 text-white px-3 py-1 rounded-full text-sm flex items-center gap-2">
-                                                {friend}
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setFriends(friends.filter((_, i) => i !== index))}
-                                                    className="hover:text-red-400"
-                                                >
-                                                    <X size={14} />
-                                                </button>
+                                        {isSearching && (
+                                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                                             </div>
-                                        ))}
+                                        )}
                                     </div>
+
+                                    {/* Search Results */}
+                                    {searchResults.length > 0 && (
+                                        <div className="mb-4 space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                                            {searchResults.map(user => (
+                                                <div
+                                                    key={user.uid}
+                                                    onClick={() => handleAddFriend(user)}
+                                                    className="flex items-center justify-between p-2 rounded-xl hover:bg-white-5 cursor-pointer transition-colors border border-transparent hover:border-white-5"
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-8 h-8 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center text-xs font-bold">
+                                                            {user.displayName ? user.displayName[0] : user.username[0]}
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-sm font-medium text-white">{user.displayName || "User"}</p>
+                                                            <p className="text-xs text-gray-500">@{user.username}</p>
+                                                        </div>
+                                                    </div>
+                                                    <Plus size={16} className="text-accent-blue" />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Selected Friends */}
+                                    {selectedFriends.length > 0 && (
+                                        <div className="flex flex-wrap gap-2">
+                                            {selectedFriends.map((friend) => (
+                                                <div key={friend.uid} className="bg-accent-blue/20 text-accent-blue px-3 py-1 rounded-full text-sm flex items-center gap-2 border border-accent-blue/20">
+                                                    @{friend.username}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedFriends(selectedFriends.filter((f) => f.uid !== friend.uid))}
+                                                        className="hover:text-white transition-colors"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
 
                                 <Button type="submit" className="w-full py-3">

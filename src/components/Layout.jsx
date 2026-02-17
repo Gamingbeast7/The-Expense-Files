@@ -5,6 +5,7 @@ import { X, LogOut } from "lucide-react";
 import { Input } from "./ui/Input";
 import { Button } from "./ui/Button";
 import { Footer } from "./Footer";
+import { UsernameSetup } from "./UsernameSetup";
 import logo from "../assets/logo.png";
 import { useNavigate } from "react-router-dom";
 
@@ -62,6 +63,7 @@ export function Layout({ children }) {
                         </button>
                     </div>
                 </motion.header>
+                <UsernameSetup />
                 {children}
                 <Footer />
             </div>

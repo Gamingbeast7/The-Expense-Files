@@ -11,7 +11,9 @@ import {
     orderBy,
     setDoc,
     getDoc,
-    where
+    where,
+    getDocs,
+    arrayUnion
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "./AuthContext";
@@ -153,7 +155,7 @@ export function ExpenseProvider({ children }) {
     };
 
     const addGroupExpense = async (groupId, expenseData) => {
-        // expenseData: { title, amount, date, paidBy, split: { "Me": 50, "Alice": 50 } }
+        // expenseData: { title, amount, date, paidBy, splitType, involvedMembers, syncToPersonal }
         if (!currentUser) return;
         try {
             await addDoc(collection(db, "groups", groupId, "expenses"), {
@@ -161,6 +163,18 @@ export function ExpenseProvider({ children }) {
                 createdBy: currentUser.uid,
                 createdAt: new Date()
             });
+
+            // Sync to personal expenses if requested and user paid
+            // We assume if "paidBy" is "Me" or currentUser.uid, then it's an expense for the user.
+            // Logic: Users usually want to track what THEY spent.
+            if (expenseData.syncToPersonal && (expenseData.paidBy === "Me" || expenseData.paidBy === currentUser.uid)) {
+                await addExpense({
+                    title: `[Group] ${expenseData.title}`,
+                    amount: expenseData.amount, // Full amount they paid
+                    date: expenseData.date,
+                    category: "Shared", // Or let them choose, but default to Shared for now
+                });
+            }
         } catch (e) {
             console.error("Error adding group expense: ", e);
             throw e;
@@ -308,6 +322,43 @@ export function ExpenseProvider({ children }) {
         });
     }, [expenses]);
 
+    const searchUsers = async (searchTerm) => {
+        // Query users where username >= searchTerm and username <= searchTerm + '\uf8ff'
+        // This is a standard Firestore prefix search technique
+        const q = query(
+            collection(db, "users"),
+            where("username", ">=", searchTerm),
+            where("username", "<=", searchTerm + '\uf8ff')
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+    };
+
+    const updateGroup = async (groupId, data) => {
+        if (!currentUser) return;
+        await updateDoc(doc(db, "groups", groupId), data);
+    };
+
+    const deleteGroup = async (groupId) => {
+        if (!currentUser) return;
+        await deleteDoc(doc(db, "groups", groupId));
+    };
+
+    const addMemberToGroup = async (groupId, newMember) => {
+        // newMember: { uid, username, displayName }
+        if (!currentUser) return;
+        const groupRef = doc(db, "groups", groupId);
+        // We need to update 'members' array (uids) and 'friends' array (for display/virtual)
+        // Note: Our previous createGroup used 'friends' as full objects now? 
+        // Let's check createGroup in Groups.jsx. It passes selectedFriends array of objects.
+        // But createGroup in ExpenseContext uses 'friends' field.
+
+        await updateDoc(groupRef, {
+            members: arrayUnion(newMember.uid),
+            friends: arrayUnion(newMember)
+        });
+    };
+
     return (
         <ExpenseContext.Provider value={{
             expenses,
@@ -334,7 +385,11 @@ export function ExpenseProvider({ children }) {
             groupExpenses,
             fetchGroupExpenses,
             currentGroup,
-            setCurrentGroup
+            setCurrentGroup,
+            searchUsers,
+            updateGroup,
+            deleteGroup,
+            addMemberToGroup
         }}>
             {children}
         </ExpenseContext.Provider>
