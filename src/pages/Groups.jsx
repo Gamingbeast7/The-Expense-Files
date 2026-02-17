@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BackButton } from "../components/ui/BackButton";
 import { Card } from "../components/ui/Card";
