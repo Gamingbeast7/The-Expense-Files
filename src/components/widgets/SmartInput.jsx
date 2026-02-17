@@ -10,10 +10,11 @@ export function SmartInput() {
     const [title, setTitle] = useState("");
     const [amount, setAmount] = useState("0");
     const [category, setCategory] = useState("Food & Dining");
+    const [paymentSource, setPaymentSource] = useState("UPI");
 
     const handleAdd = () => {
         if (!title || !amount) return;
-        addExpense({ title, amount: parseFloat(amount), category });
+        addExpense({ title, amount: parseFloat(amount), category, paymentSource });
         setTitle("");
         setAmount("0");
     };
@@ -48,6 +49,16 @@ export function SmartInput() {
                         <option value="Entertainment">Entertainment</option>
                         <option value="Shopping">Shopping</option>
                         <option value="Utilities">Utilities</option>
+                    </Select>
+                    <Select
+                        value={paymentSource}
+                        onChange={(e) => setPaymentSource(e.target.value)}
+                        className="flex-1"
+                    >
+                        <option value="UPI">UPI</option>
+                        <option value="Cash">Cash</option>
+                        <option value="Card">Card</option>
+                        <option value="Other">Other</option>
                     </Select>
                     <Button onClick={handleAdd} size="icon" className="w-12 h-12 flex-shrink-0 bg-accent-blue hover:bg-accent-blue/80 rounded-xl">
                         <Plus size={24} />

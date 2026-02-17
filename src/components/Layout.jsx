@@ -1,25 +1,29 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useExpenses } from "../context/ExpenseContext";
-import { X, User } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+import { X, LogOut } from "lucide-react";
 import { Input } from "./ui/Input";
 import { Button } from "./ui/Button";
 import { Footer } from "./Footer";
 import logo from "../assets/logo.png";
+import { useNavigate } from "react-router-dom";
 
 export function Layout({ children }) {
-    const { user, updateUser } = useExpenses();
+    const { currentUser, logout } = useAuth();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
-    const [newName, setNewName] = useState(user?.name || "");
+    const navigate = useNavigate();
 
-    const initials = user?.name
-        ? user.name.split(" ").map(n => n[0]).join("").toUpperCase().substring(0, 2)
-        : "JD";
+    const initials = currentUser?.displayName
+        ? currentUser.displayName.split(" ").map(n => n[0]).join("").toUpperCase().substring(0, 2)
+        : "U";
 
-    const handleSave = (e) => {
-        e.preventDefault();
-        updateUser(newName);
-        setIsProfileOpen(false);
+    const handleLogout = async () => {
+        try {
+            await logout();
+            navigate("/login");
+        } catch (error) {
+            console.error("Failed to log out", error);
+        }
     };
 
     return (
@@ -40,20 +44,21 @@ export function Layout({ children }) {
                         </div>
                     </div>
                     <button
-                        onClick={() => {
-                            setNewName(user.name);
-                            setIsProfileOpen(true);
-                        }}
-                        className="h-10 w-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 border border-white-10 flex items-center justify-center hover:ring-2 hover:ring-accent-blue transition-all"
+                        onClick={() => setIsProfileOpen(true)}
+                        className="h-10 w-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 border border-white-10 flex items-center justify-center hover:ring-2 hover:ring-accent-blue transition-all overflow-hidden"
                     >
-                        <span className="text-xs font-bold text-white">{initials}</span>
+                        {currentUser?.photoURL ? (
+                            <img src={currentUser.photoURL} alt={currentUser.displayName} className="w-full h-full object-cover" />
+                        ) : (
+                            <span className="text-xs font-bold text-white">{initials}</span>
+                        )}
                     </button>
                 </motion.header>
                 {children}
                 <Footer />
             </div>
 
-            {/* Edit Profile Modal */}
+            {/* Edit Profile / User Menu Modal */}
             <AnimatePresence>
                 {isProfileOpen && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -67,24 +72,26 @@ export function Layout({ children }) {
                                 <X size={20} />
                             </button>
                             <div className="flex flex-col items-center mb-6">
-                                <div className="h-16 w-16 rounded-full bg-gradient-to-br from-accent-blue to-accent-purple flex items-center justify-center mb-4 text-xl font-bold">
-                                    {initials}
+                                <div className="h-16 w-16 rounded-full bg-gradient-to-br from-accent-blue to-accent-purple flex items-center justify-center mb-4 text-xl font-bold overflow-hidden">
+                                    {currentUser?.photoURL ? (
+                                        <img src={currentUser.photoURL} alt={currentUser.displayName} className="w-full h-full object-cover" />
+                                    ) : (
+                                        initials
+                                    )}
                                 </div>
-                                <h2 className="text-xl font-bold text-white">Edit Profile</h2>
+                                <h2 className="text-xl font-bold text-white">{currentUser?.displayName || "User"}</h2>
+                                <p className="text-sm text-gray-400">{currentUser?.email}</p>
                             </div>
 
-                            <form onSubmit={handleSave} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-400 mb-1">Your Name</label>
-                                    <Input
-                                        autoFocus
-                                        value={newName}
-                                        onChange={(e) => setNewName(e.target.value)}
-                                        placeholder="John Doe"
-                                    />
-                                </div>
-                                <Button type="submit" className="w-full">Save Changes</Button>
-                            </form>
+                            <div className="space-y-4">
+                                <Button
+                                    onClick={handleLogout}
+                                    className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20"
+                                >
+                                    <LogOut size={16} className="mr-2" />
+                                    Sign Out
+                                </Button>
+                            </div>
                         </motion.div>
                     </div>
                 )}

@@ -1,42 +1,176 @@
-import { createContext, useContext, useState, useMemo } from "react";
+import { createContext, useContext, useState, useMemo, useEffect } from "react";
 import { format, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, endOfDay } from "date-fns";
+import {
+    collection,
+    addDoc,
+    deleteDoc,
+    doc,
+    updateDoc,
+    onSnapshot,
+    query,
+    orderBy,
+    setDoc,
+    getDoc
+} from "firebase/firestore";
+import { db } from "../firebase";
+import { useAuth } from "./AuthContext";
 
 const ExpenseContext = createContext();
 
-const INITIAL_EXPENSES = [];
-
-const INITIAL_GOALS = [];
-
 export function ExpenseProvider({ children }) {
-    const [expenses, setExpenses] = useState(INITIAL_EXPENSES);
-    const [goals, setGoals] = useState(INITIAL_GOALS);
+    const { currentUser } = useAuth();
+    const [expenses, setExpenses] = useState([]);
+    const [goals, setGoals] = useState([]);
     const [budget, setBudget] = useState(0);
-    const [user, setUser] = useState({ name: "John Doe" });
+    const [user, setUser] = useState({ name: currentUser?.displayName || "User" });
+    const [loading, setLoading] = useState(true);
 
-    const updateUser = (name) => {
-        setUser({ name });
+    // Sync User Profile
+    useEffect(() => {
+        if (currentUser) {
+            setUser({
+                name: currentUser.displayName || "User",
+                email: currentUser.email,
+                photoURL: currentUser.photoURL
+            });
+        }
+    }, [currentUser]);
+
+    // Fetch Expenses and Goals from Firestore
+    useEffect(() => {
+        if (!currentUser) {
+            setExpenses([]);
+            setGoals([]);
+            setBudget(0);
+            setLoading(false);
+            return;
+        }
+
+        const userDocRef = doc(db, "users", currentUser.uid);
+        const expensesRef = collection(userDocRef, "expenses");
+        const goalsRef = collection(userDocRef, "goals");
+
+        // Real-time listener for Expenses
+        const unsubscribeExpenses = onSnapshot(query(expensesRef, orderBy("date", "desc")), (snapshot) => {
+            const expensesData = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setExpenses(expensesData);
+        });
+
+        // Real-time listener for Goals
+        const unsubscribeGoals = onSnapshot(goalsRef, (snapshot) => {
+            const goalsData = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
+            }));
+            setGoals(goalsData);
+        });
+
+        // Fetch User Budget/Settings
+        // We can store budget directly on the user document
+        const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.budget) setBudget(data.budget);
+            } else {
+                // Create user doc if it doesn't exist
+                setDoc(userDocRef, {
+                    email: currentUser.email,
+                    createdAt: new Date()
+                }, { merge: true });
+            }
+        });
+
+        setLoading(false);
+
+        return () => {
+            unsubscribeExpenses();
+            unsubscribeGoals();
+            unsubscribeUser();
+        };
+    }, [currentUser]);
+
+    const updateUser = async (name) => {
+        // In a real app we might update the Firebase Auth profile or a custom user document
+        // For now, just local state update for UI, and maybe custom doc
+        setUser(prev => ({ ...prev, name }));
+        // functionality to update firebase profile could go here
     };
 
-    const addExpense = (expense) => {
-        setExpenses(prev => [{ ...expense, id: Date.now(), date: expense.date || new Date().toISOString() }, ...prev]);
+    const addExpense = async (expense) => {
+        if (!currentUser) return;
+        try {
+            await addDoc(collection(db, "users", currentUser.uid, "expenses"), {
+                ...expense,
+                date: expense.date || new Date().toISOString(),
+                createdAt: new Date()
+            });
+        } catch (e) {
+            console.error("Error adding expense: ", e);
+        }
     };
 
-    const deleteExpense = (id) => {
-        setExpenses(prev => prev.filter(expense => expense.id !== id));
+    const deleteExpense = async (id) => {
+        if (!currentUser) return;
+        try {
+            await deleteDoc(doc(db, "users", currentUser.uid, "expenses", id));
+        } catch (e) {
+            console.error("Error deleting expense: ", e);
+        }
     };
 
-    const addGoal = (goal) => {
-        setGoals(prev => [...prev, { ...goal, id: Date.now() }]);
+    const addGoal = async (goal) => {
+        if (!currentUser) return;
+        try {
+            await addDoc(collection(db, "users", currentUser.uid, "goals"), {
+                ...goal,
+                createdAt: new Date()
+            });
+        } catch (e) {
+            console.error("Error adding goal: ", e);
+        }
     };
 
-    const updateGoal = (id, amount) => {
-        setGoals(prev => prev.map(goal =>
-            goal.id === id ? { ...goal, current: goal.current + parseFloat(amount) } : goal
-        ));
+    const updateGoal = async (id, amount) => {
+        if (!currentUser) return;
+        // This logic is a bit specific: existing 'updateGoal' added amount to current.
+        // We need to find the goal first or trust the passed logic. 
+        // For simplicity, let's assume we pass the NEW current value or we read it first.
+        // Actually the UI likely passes the amount to ADD.
+
+        const goalToUpdate = goals.find(g => g.id === id);
+        if (!goalToUpdate) return;
+
+        const newCurrent = (goalToUpdate.current || 0) + parseFloat(amount);
+
+        try {
+            await updateDoc(doc(db, "users", currentUser.uid, "goals", id), {
+                current: newCurrent
+            });
+        } catch (e) {
+            console.error("Error updating goal: ", e);
+        }
     };
 
-    const deleteGoal = (id) => {
-        setGoals(prev => prev.filter(goal => goal.id !== id));
+    const deleteGoal = async (id) => {
+        if (!currentUser) return;
+        try {
+            await deleteDoc(doc(db, "users", currentUser.uid, "goals", id));
+        } catch (e) {
+            console.error("Error deleting goal: ", e);
+        }
+    };
+
+    const updateBudget = async (newBudget) => {
+        if (!currentUser) return;
+        try {
+            await setDoc(doc(db, "users", currentUser.uid), { budget: newBudget }, { merge: true });
+            setBudget(newBudget);
+        } catch (e) {
+            console.error("Error updating budget: ", e);
+        }
     };
 
     const totalBalance = useMemo(() => {
@@ -110,17 +244,14 @@ export function ExpenseProvider({ children }) {
             categoryBreakdown,
             spendingTrends,
             budget,
-            budget,
-            setBudget,
-            goals,
-            addGoal,
-            updateGoal,
+            setBudget: updateBudget,
             goals,
             addGoal,
             updateGoal,
             deleteGoal,
             user,
-            updateUser
+            updateUser,
+            loading
         }}>
             {children}
         </ExpenseContext.Provider>

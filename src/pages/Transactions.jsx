@@ -24,9 +24,9 @@ export function Transactions() {
     const [selectedImage, setSelectedImage] = useState(null);
 
     const downloadCSV = () => {
-        const headers = ["Date,Title,Category,Amount,Receipt"];
+        const headers = ["Date,Title,Category,Amount,Callback,Payment Source,Receipt"];
         const rows = expenses.map(e =>
-            `${format(new Date(e.date), "yyyy-MM-dd")},"${e.title}","${e.category}",${e.amount},"${e.image || ''}"`
+            `${format(new Date(e.date), "yyyy-MM-dd")},"${e.title}","${e.category}",${e.amount},"${e.paymentSource || 'UPI'}","${e.image || ''}"`
         );
         const csvContent = [headers, ...rows].join("\n");
         const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -98,7 +98,12 @@ export function Transactions() {
                             <div className="flex items-center gap-6">
                                 <div className="text-right">
                                     <span className="block font-bold text-white">₹{expense.amount.toFixed(2)}</span>
-                                    <span className="text-xs text-gray-500">{expense.category}</span>
+                                    <div className="flex flex-col items-end">
+                                        <span className="text-xs text-gray-500">{expense.category}</span>
+                                        <span className="text-[10px] text-accent-blue bg-accent-blue/10 px-2 py-0.5 rounded-full mt-1">
+                                            {expense.paymentSource || 'UPI'}
+                                        </span>
+                                    </div>
                                 </div>
                                 <button
                                     onClick={(e) => handleDelete(expense.id, e)}

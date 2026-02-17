@@ -28,6 +28,8 @@ export function AddExpense() {
     const [category, setCategory] = useState("Food & Dining");
     const [description, setDescription] = useState("");
     const [image, setImage] = useState(null);
+    const [paymentSource, setPaymentSource] = useState("UPI");
+    const [customSource, setCustomSource] = useState("");
     const [preview, setPreview] = useState(null);
 
     const handleImageChange = (e) => {
@@ -48,6 +50,7 @@ export function AddExpense() {
             amount: parseFloat(amount),
             category,
             date: date || new Date().toISOString(),
+            paymentSource: paymentSource === "Other" ? customSource : paymentSource,
             image: preview // Store URL for demo
         });
 
@@ -118,6 +121,34 @@ export function AddExpense() {
                                     ))}
                                 </div>
                             </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-gray-400 mb-2">Payment Source</label>
+                            <div className="grid grid-cols-4 gap-3">
+                                {["Cash", "UPI", "Card", "Other"].map((source) => (
+                                    <div
+                                        key={source}
+                                        onClick={() => setPaymentSource(source)}
+                                        className={`
+                                            flex items-center justify-center p-3 rounded-xl cursor-pointer transition-all border
+                                            ${paymentSource === source
+                                                ? "bg-accent-blue text-white border-accent-blue"
+                                                : "bg-white-5 border-transparent hover:bg-white-10 text-gray-400"}
+                                        `}
+                                    >
+                                        <span className="text-sm font-medium">{source}</span>
+                                    </div>
+                                ))}
+                            </div>
+                            {paymentSource === "Other" && (
+                                <Input
+                                    placeholder="Enter payment method (e.g. NetBanking)"
+                                    value={customSource}
+                                    onChange={(e) => setCustomSource(e.target.value)}
+                                    className="mt-4"
+                                />
+                            )}
                         </div>
 
                         <div>

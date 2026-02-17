@@ -6,8 +6,6 @@ import { ExpenseProvider } from './context/ExpenseContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <ExpenseProvider>
-      <App />
-    </ExpenseProvider>
+    <App />
   </StrictMode>,
 )
