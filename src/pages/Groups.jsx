@@ -4,12 +4,12 @@ import { BackButton } from "../components/ui/BackButton";
 import { Card } from "../components/ui/Card";
 import { Input } from "../components/ui/Input";
 import { Button } from "../components/ui/Button";
-import { Users, Plus, X, ArrowRight } from "lucide-react";
+import { Users, Plus, X, ArrowRight, Trash2 } from "lucide-react";
 import { useExpenses } from "../context/ExpenseContext";
 import { useNavigate } from "react-router-dom";
 
 export function Groups() {
-    const { groups, createGroup, searchUsers } = useExpenses();
+    const { groups, createGroup, deleteGroup, searchUsers } = useExpenses();
     const navigate = useNavigate();
     const [iscreateOpen, setIsCreateOpen] = useState(false);
     const [newGroupName, setNewGroupName] = useState("");
@@ -162,8 +162,22 @@ export function Groups() {
                                 className="p-6 cursor-pointer hover:bg-white-5 transition-colors group relative overflow-hidden"
                                 onClick={() => navigate(`/groups/${group.id}`)}
                             >
-                                <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <ArrowRight className="text-accent-blue" />
+                                <div className="absolute top-3 right-3 flex items-center gap-1 z-10">
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            if (window.confirm(`Are you sure you want to delete "${group.name}"?`)) {
+                                                deleteGroup(group.id);
+                                            }
+                                        }}
+                                        className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/20 rounded-full transition-colors opacity-0 group-hover:opacity-100"
+                                        title="Delete Group"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                    <div className="p-2 text-accent-blue opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <ArrowRight size={18} />
+                                    </div>
                                 </div>
                                 <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent-blue to-accent-purple flex items-center justify-center text-white mb-4">
                                     <Users size={24} />

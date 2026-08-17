@@ -781,13 +781,44 @@ export function ExpenseProvider({ children }) {
     };
 
     const updateGroup = async (groupId, data) => {
-        if (!currentUser) return;
-        await updateDoc(doc(db, "groups", groupId), data);
+        if (!currentUser || !groupId) return;
+        setGroups(prev => {
+            const updated = prev.map(g => g.id === groupId ? { ...g, ...data } : g);
+            try {
+                localStorage.setItem(`groups_${currentUser.uid}`, JSON.stringify(updated));
+            } catch (e) {}
+            return updated;
+        });
+
+        try {
+            await updateDoc(doc(db, "groups", groupId), data);
+        } catch (e) {
+            console.error("Error updating group in Firestore:", e);
+        }
     };
 
     const deleteGroup = async (groupId) => {
-        if (!currentUser) return;
-        await deleteDoc(doc(db, "groups", groupId));
+        if (!currentUser || !groupId) return;
+
+        // 1. Optimistically remove from state & local storage immediately
+        setGroups(prev => {
+            const updated = prev.filter(g => g.id !== groupId);
+            try {
+                localStorage.setItem(`groups_${currentUser.uid}`, JSON.stringify(updated));
+            } catch (e) {}
+            return updated;
+        });
+
+        try {
+            localStorage.removeItem(`group_expenses_${groupId}`);
+        } catch (e) {}
+
+        // 2. Delete from Firestore
+        try {
+            await deleteDoc(doc(db, "groups", groupId));
+        } catch (e) {
+            console.error("Error deleting group from Firestore:", e);
+        }
     };
 
     const addMemberToGroup = async (groupId, newMember) => {
