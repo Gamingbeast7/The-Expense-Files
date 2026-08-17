@@ -75,11 +75,13 @@ function AppContent() {
           </PrivateRoute>
         } />
         <Route path="/about" element={
-          <PrivateRoute>
-            <Layout>
+          <div className="min-h-screen w-full bg-dark text-white p-4 md:p-8 flex justify-center font-sans selection:bg-accent-blue selection:text-white">
+            <div className="max-w-[1400px] w-full mx-auto relative z-10">
               <About />
-            </Layout>
-          </PrivateRoute>
+            </div>
+            <div className="fixed top-[-20%] left-[-10%] w-[50%] h-[50%] bg-accent-blue/20 blur-[120px] rounded-full pointer-events-none opacity-20" />
+            <div className="fixed bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-accent-purple/20 blur-[120px] rounded-full pointer-events-none opacity-20" />
+          </div>
         } />
         <Route path="/groups" element={
           <PrivateRoute>

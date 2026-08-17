@@ -29,43 +29,62 @@ export function AuthProvider({ children }) {
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                // Fetch additional user data from Firestore (e.g. username)
-                const userDocRef = doc(db, "users", user.uid);
-                const userDocSnap = await getDoc(userDocRef);
-
-                if (userDocSnap.exists()) {
-                    setCurrentUser({ ...user, ...userDocSnap.data() });
+            try {
+                if (user) {
+                    // Fetch additional user data from Firestore (e.g. username)
+                    const userDocRef = doc(db, "users", user.uid);
+                    try {
+                        const userDocSnap = await getDoc(userDocRef);
+                        if (userDocSnap.exists()) {
+                            setCurrentUser({ ...user, ...userDocSnap.data() });
+                        } else {
+                            await setDoc(userDocRef, {
+                                email: user.email,
+                                displayName: user.displayName,
+                                photoURL: user.photoURL,
+                                createdAt: new Date()
+                            }, { merge: true });
+                            setCurrentUser(user);
+                        }
+                    } catch (firestoreErr) {
+                        console.warn("Could not fetch or create user document in Firestore:", firestoreErr);
+                        setCurrentUser(user);
+                    }
                 } else {
-                    // Create basic doc if not exists
-                    await setDoc(userDocRef, {
-                        email: user.email,
-                        displayName: user.displayName,
-                        photoURL: user.photoURL,
-                        createdAt: new Date()
-                    }, { merge: true });
-                    setCurrentUser(user);
+                    setCurrentUser(null);
                 }
-            } else {
+            } catch (err) {
+                console.error("Auth state change error:", err);
                 setCurrentUser(null);
+            } finally {
+                setLoading(false);
             }
-            setLoading(false);
         });
 
         return unsubscribe;
     }, []);
 
     const checkUsernameAvailability = async (username) => {
-        const q = query(collection(db, "users"), where("username", "==", username));
-        const querySnapshot = await getDocs(q);
-        return querySnapshot.empty;
+        try {
+            const q = query(collection(db, "users"), where("username", "==", username));
+            const querySnapshot = await getDocs(q);
+            return querySnapshot.empty;
+        } catch (err) {
+            console.error("Error checking username availability:", err);
+            return true;
+        }
     };
 
     const updateUsername = async (username) => {
         if (!currentUser) return;
-        const userDocRef = doc(db, "users", currentUser.uid);
-        await updateDoc(userDocRef, { username });
-        setCurrentUser(prev => ({ ...prev, username }));
+        try {
+            const userDocRef = doc(db, "users", currentUser.uid);
+            await updateDoc(userDocRef, { username });
+            setCurrentUser(prev => ({ ...prev, username }));
+        } catch (err) {
+            console.error("Error updating username:", err);
+            throw err;
+        }
     };
 
     const value = {
@@ -78,7 +97,14 @@ export function AuthProvider({ children }) {
 
     return (
         <AuthContext.Provider value={value}>
-            {!loading && children}
+            {loading ? (
+                <div className="min-h-screen w-full bg-dark text-white flex flex-col items-center justify-center">
+                    <div className="w-10 h-10 border-2 border-accent-blue/30 border-t-accent-blue rounded-full animate-spin mb-4" />
+                    <p className="text-gray-400 text-sm font-medium">Loading The Expense Files...</p>
+                </div>
+            ) : (
+                children
+            )}
         </AuthContext.Provider>
     );
 }
