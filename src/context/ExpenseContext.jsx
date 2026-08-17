@@ -22,7 +22,17 @@ const ExpenseContext = createContext();
 
 export function ExpenseProvider({ children }) {
     const { currentUser } = useAuth();
-    const [expenses, setExpenses] = useState([]);
+    const [expenses, setExpenses] = useState(() => {
+        if (currentUser?.uid) {
+            try {
+                const saved = localStorage.getItem(`expenses_${currentUser.uid}`);
+                return saved ? JSON.parse(saved) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+        return [];
+    });
     const [goals, setGoals] = useState([]);
     const [budget, setBudget] = useState(0);
     const [user, setUser] = useState({ name: currentUser?.displayName || "User" });
@@ -49,18 +59,55 @@ export function ExpenseProvider({ children }) {
             return;
         }
 
+        // 1. Immediately load from local cache if available
+        try {
+            const cached = localStorage.getItem(`expenses_${currentUser.uid}`);
+            if (cached) {
+                setExpenses(JSON.parse(cached));
+            }
+        } catch (e) {}
+
         const userDocRef = doc(db, "users", currentUser.uid);
         const expensesRef = collection(userDocRef, "expenses");
         const goalsRef = collection(userDocRef, "goals");
 
-        // Real-time listener for Expenses
-        const unsubscribeExpenses = onSnapshot(query(expensesRef, orderBy("date", "desc")), (snapshot) => {
-            const expensesData = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+        // Helper to process and sort expenses
+        const handleExpensesSnapshot = (snapshot) => {
+            const expensesData = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    amount: parseFloat(data.amount) || 0,
+                    date: data.date || new Date().toISOString()
+                };
+            });
+
+            expensesData.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
             setExpenses(expensesData);
-        });
+            try {
+                localStorage.setItem(`expenses_${currentUser.uid}`, JSON.stringify(expensesData));
+            } catch (e) {}
+        };
+
+        // Real-time listener for Expenses
+        let unsubscribeExpenses = () => {};
+        try {
+            unsubscribeExpenses = onSnapshot(
+                query(expensesRef, orderBy("date", "desc")),
+                handleExpensesSnapshot,
+                (err) => {
+                    console.warn("Ordered snapshot failed, falling back to unordered listener:", err);
+                    // Fallback to unordered query if composite index or mixed types fail
+                    unsubscribeExpenses = onSnapshot(expensesRef, handleExpensesSnapshot, (fallbackErr) => {
+                        console.error("Expenses listener failed:", fallbackErr);
+                    });
+                }
+            );
+        } catch (e) {
+            unsubscribeExpenses = onSnapshot(expensesRef, handleExpensesSnapshot, console.error);
+        }
 
         // Real-time listener for Goals
         const unsubscribeGoals = onSnapshot(goalsRef, (snapshot) => {
@@ -69,29 +116,31 @@ export function ExpenseProvider({ children }) {
                 ...doc.data()
             }));
             setGoals(goalsData);
+        }, (err) => {
+            console.error("Goals listener error:", err);
         });
 
         // Fetch User Budget/Settings
-        // We can store budget directly on the user document
         const unsubscribeUser = onSnapshot(userDocRef, (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 if (data.budget) setBudget(data.budget);
             } else {
-                // Create user doc if it doesn't exist
                 setDoc(userDocRef, {
                     email: currentUser.email,
-                    createdAt: new Date()
-                }, { merge: true });
+                    createdAt: new Date().toISOString()
+                }, { merge: true }).catch(console.error);
             }
+        }, (err) => {
+            console.error("User doc listener error:", err);
         });
 
         setLoading(false);
 
         return () => {
-            unsubscribeExpenses();
-            unsubscribeGoals();
-            unsubscribeUser();
+            if (typeof unsubscribeExpenses === 'function') unsubscribeExpenses();
+            if (typeof unsubscribeGoals === 'function') unsubscribeGoals();
+            if (typeof unsubscribeUser === 'function') unsubscribeUser();
         };
     }, [currentUser]);
 
@@ -173,42 +222,48 @@ export function ExpenseProvider({ children }) {
     };
 
     const addGroupExpense = async (groupId, expenseData) => {
-        // expenseData: { title, amount, date, paidBy, splitType, involvedMembers, syncToPersonal }
-        if (!currentUser) return;
+        if (!currentUser || !groupId) return;
         try {
-            await addDoc(collection(db, "groups", groupId, "expenses"), {
-                ...expenseData,
+            const validAmount = parseFloat(expenseData.amount) || 0;
+            const validDate = expenseData.date ? new Date(expenseData.date).toISOString() : new Date().toISOString();
+
+            const cleanGroupExpense = {
+                title: (expenseData.title || "").trim(),
+                amount: validAmount,
+                date: validDate,
+                paidBy: expenseData.paidBy || "Me",
+                splitType: expenseData.splitType || "EQUAL",
+                involvedMembers: expenseData.involvedMembers || [],
+                payers: expenseData.payers || [],
+                syncToPersonal: !!expenseData.syncToPersonal,
                 createdBy: currentUser.uid,
-                createdAt: new Date()
-            });
+                creatorEmail: (currentUser.email || "").toLowerCase(),
+                createdAt: new Date().toISOString()
+            };
+
+            await addDoc(collection(db, "groups", groupId, "expenses"), cleanGroupExpense);
 
             // Sync to personal expenses if requested and user paid
-            // We assume if "paidBy" is "Me" or currentUser.uid, then it's an expense for the user.
-            if (expenseData.syncToPersonal && (expenseData.paidBy === "Me" || expenseData.paidBy === currentUser.uid)) {
-                let personalAmount = expenseData.amount;
-
-                // Calculate share if split is EQUAL
-                if ((expenseData.splitType === 'EQUAL' || !expenseData.splitType) && Array.isArray(expenseData.involvedMembers)) {
+            if (expenseData.syncToPersonal) {
+                let personalAmount = validAmount;
+                if ((expenseData.splitType === 'EQUAL' || !expenseData.splitType) && Array.isArray(expenseData.involvedMembers) && expenseData.involvedMembers.length > 0) {
                     const amIInvolved = expenseData.involvedMembers.includes('Me') ||
                         expenseData.involvedMembers.includes(currentUser.uid) ||
-                        expenseData.involvedMembers.includes(currentUser.displayName);
+                        expenseData.involvedMembers.includes(currentUser.displayName) ||
+                        expenseData.involvedMembers.includes(currentUser.username);
 
                     if (amIInvolved) {
-                        personalAmount = expenseData.amount / expenseData.involvedMembers.length;
-                    } else {
-                        // If paid by me but I'm not involved, strictly speaking my consumption is 0.
-                        // However, usually "Sync to personal" implies tracking my spending.
-                        // But based on user request "just add this amount to my personal spend", it implies share.
-                        personalAmount = 0;
+                        personalAmount = validAmount / expenseData.involvedMembers.length;
                     }
                 }
 
                 if (personalAmount > 0) {
                     await addExpense({
-                        title: `[Group] ${expenseData.title}`,
-                        amount: parseFloat(personalAmount.toFixed(2)), // Ensure 2 decimal places
-                        date: expenseData.date,
+                        title: `[Group] ${cleanGroupExpense.title}`,
+                        amount: parseFloat(personalAmount.toFixed(2)),
+                        date: validDate,
                         category: "Shared",
+                        paymentSource: "Group Split"
                     });
                 }
             }
@@ -219,15 +274,10 @@ export function ExpenseProvider({ children }) {
     };
 
     const updateGroupExpense = async (groupId, expenseId, data) => {
-        if (!currentUser) return;
+        if (!currentUser || !groupId || !expenseId) return;
         try {
             const expenseRef = doc(db, "groups", groupId, "expenses", expenseId);
             await updateDoc(expenseRef, data);
-
-            // If syncToPersonal was true, we should probably update the personal expense too?
-            // This is complex as we don't link them by ID easily. 
-            // For now, we'll leave personal sync as a "copy" operation that doesn't sync updates back.
-            // Future improvement: Store personalExpenseId in group expense to allow sync.
         } catch (e) {
             console.error("Error updating group expense: ", e);
             throw e;
@@ -235,7 +285,7 @@ export function ExpenseProvider({ children }) {
     };
 
     const deleteGroupExpense = async (groupId, expenseId) => {
-        if (!currentUser) return;
+        if (!currentUser || !groupId || !expenseId) return;
         try {
             await deleteDoc(doc(db, "groups", groupId, "expenses", expenseId));
         } catch (e) {
@@ -245,31 +295,78 @@ export function ExpenseProvider({ children }) {
     };
 
     const updateUser = async (name) => {
-        // In a real app we might update the Firebase Auth profile or a custom user document
-        // For now, just local state update for UI, and maybe custom doc
         setUser(prev => ({ ...prev, name }));
-        // functionality to update firebase profile could go here
     };
 
     const addExpense = async (expense) => {
         if (!currentUser) return;
+        const tempId = `exp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const validAmount = parseFloat(expense.amount) || 0;
+        const validDate = expense.date ? new Date(expense.date).toISOString() : new Date().toISOString();
+
+        const cleanExpense = {
+            id: tempId,
+            title: (expense.title || "").trim(),
+            amount: validAmount,
+            category: expense.category || "Other",
+            date: validDate,
+            paymentSource: expense.paymentSource || "UPI",
+            image: typeof expense.image === 'string' ? expense.image : '',
+            createdAt: new Date().toISOString(),
+            userId: currentUser.uid
+        };
+
+        // 1. Instantly update local state and localStorage
+        setExpenses(prev => {
+            const updated = [cleanExpense, ...prev.filter(e => e.id !== tempId)];
+            try {
+                localStorage.setItem(`expenses_${currentUser.uid}`, JSON.stringify(updated));
+            } catch (err) {}
+            return updated;
+        });
+
+        // 2. Persist to Firestore
         try {
-            await addDoc(collection(db, "users", currentUser.uid, "expenses"), {
-                ...expense,
-                date: expense.date || new Date().toISOString(),
-                createdAt: new Date()
+            const userDocRef = doc(db, "users", currentUser.uid);
+            const docRef = await addDoc(collection(userDocRef, "expenses"), {
+                title: cleanExpense.title,
+                amount: cleanExpense.amount,
+                category: cleanExpense.category,
+                date: cleanExpense.date,
+                paymentSource: cleanExpense.paymentSource,
+                image: cleanExpense.image,
+                createdAt: cleanExpense.createdAt
+            });
+
+            // Replace temporary ID with Firestore ID
+            setExpenses(prev => {
+                const updated = prev.map(e => e.id === tempId ? { ...e, id: docRef.id } : e);
+                try {
+                    localStorage.setItem(`expenses_${currentUser.uid}`, JSON.stringify(updated));
+                } catch (err) {}
+                return updated;
             });
         } catch (e) {
-            console.error("Error adding expense: ", e);
+            console.error("Error adding expense to Firestore: ", e);
         }
     };
 
     const deleteExpense = async (id) => {
-        if (!currentUser) return;
+        if (!currentUser || !id) return;
+        // Optimistic delete
+        setExpenses(prev => {
+            const updated = prev.filter(e => e.id !== id);
+            try {
+                localStorage.setItem(`expenses_${currentUser.uid}`, JSON.stringify(updated));
+            } catch (err) {}
+            return updated;
+        });
+
         try {
-            await deleteDoc(doc(db, "users", currentUser.uid, "expenses", id));
+            const userDocRef = doc(db, "users", currentUser.uid);
+            await deleteDoc(doc(userDocRef, "expenses", id));
         } catch (e) {
-            console.error("Error deleting expense: ", e);
+            console.error("Error deleting expense from Firestore: ", e);
         }
     };
 

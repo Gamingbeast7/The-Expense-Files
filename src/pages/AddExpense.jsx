@@ -32,6 +32,8 @@ export function AddExpense() {
     const [customSource, setCustomSource] = useState("");
     const [preview, setPreview] = useState(null);
 
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     const handleImageChange = (e) => {
         const file = e.target.files[0];
         if (file) {
@@ -41,20 +43,31 @@ export function AddExpense() {
         }
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!amount || !description) return;
+        const parsedAmount = parseFloat(amount);
+        if (!parsedAmount || !description.trim() || isSubmitting) return;
 
-        addExpense({
-            title: description,
-            amount: parseFloat(amount),
-            category,
-            date: date || new Date().toISOString(),
-            paymentSource: paymentSource === "Other" ? customSource : paymentSource,
-            image: preview // Store URL for demo
-        });
+        setIsSubmitting(true);
+        try {
+            const formattedDate = date ? new Date(date).toISOString() : new Date().toISOString();
 
-        navigate("/transactions");
+            await addExpense({
+                title: description.trim(),
+                amount: parsedAmount,
+                category,
+                date: formattedDate,
+                paymentSource: paymentSource === "Other" ? (customSource.trim() || "Other") : paymentSource,
+                image: preview
+            });
+
+            navigate("/transactions");
+        } catch (err) {
+            console.error("Error submitting expense:", err);
+            navigate("/transactions");
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
