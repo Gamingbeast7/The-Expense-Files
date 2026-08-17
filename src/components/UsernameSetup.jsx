@@ -10,6 +10,7 @@ export function UsernameSetup() {
     const [isOpen, setIsOpen] = useState(false);
     const [username, setUsername] = useState("");
     const [isChecking, setIsChecking] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [isAvailable, setIsAvailable] = useState(null); // null, true, false
     const [error, setError] = useState("");
 
@@ -40,15 +41,22 @@ export function UsernameSetup() {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!isAvailable || username.length < 3) return;
+        if (!isAvailable || username.length < 3 || isSaving) return;
 
+        setIsSaving(true);
         try {
             await updateUsername(username);
             setIsOpen(false);
         } catch (e) {
             console.error("Error setting username:", e);
             setError("Failed to set username. Please try again.");
+        } finally {
+            setIsSaving(false);
         }
+    };
+
+    const handleSkip = () => {
+        setIsOpen(false);
     };
 
     if (!isOpen) return null;
@@ -59,8 +67,16 @@ export function UsernameSetup() {
                 <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-8 w-full max-w-md text-center"
+                    className="bg-[#1C1C1E] border border-white-10 rounded-2xl p-8 w-full max-w-md text-center relative"
                 >
+                    <button
+                        onClick={handleSkip}
+                        className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors"
+                        title="Close"
+                    >
+                        <X size={20} />
+                    </button>
+
                     <div className="w-16 h-16 rounded-full bg-accent-blue/20 text-accent-blue flex items-center justify-center mx-auto mb-6">
                         <span className="text-2xl font-bold">@</span>
                     </div>
@@ -110,13 +126,22 @@ export function UsernameSetup() {
                             <p className="text-red-400 text-sm">Username is already taken.</p>
                         )}
 
-                        <Button
-                            type="submit"
-                            className="w-full py-3"
-                            disabled={!isAvailable || isChecking || username.length < 3}
-                        >
-                            Set Username
-                        </Button>
+                        <div className="flex flex-col gap-2 pt-2">
+                            <Button
+                                type="submit"
+                                className="w-full py-3"
+                                disabled={!isAvailable || isChecking || username.length < 3 || isSaving}
+                            >
+                                {isSaving ? "Saving..." : "Set Username"}
+                            </Button>
+                            <button
+                                type="button"
+                                onClick={handleSkip}
+                                className="text-xs text-gray-500 hover:text-gray-300 py-1 transition-colors"
+                            >
+                                Skip for now
+                            </button>
+                        </div>
                     </form>
                 </motion.div>
             </div>

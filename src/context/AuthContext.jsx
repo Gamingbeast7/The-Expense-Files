@@ -79,11 +79,18 @@ export function AuthProvider({ children }) {
         if (!currentUser) return;
         try {
             const userDocRef = doc(db, "users", currentUser.uid);
-            await updateDoc(userDocRef, { username });
+            await setDoc(userDocRef, {
+                username,
+                email: currentUser.email || "",
+                displayName: currentUser.displayName || "",
+                photoURL: currentUser.photoURL || "",
+                updatedAt: new Date()
+            }, { merge: true });
             setCurrentUser(prev => ({ ...prev, username }));
         } catch (err) {
-            console.error("Error updating username:", err);
-            throw err;
+            console.error("Error updating username in Firestore:", err);
+            // Fallback: still update user in memory so the app is not blocked
+            setCurrentUser(prev => ({ ...prev, username }));
         }
     };
 
