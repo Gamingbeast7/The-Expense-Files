@@ -166,72 +166,150 @@ export function ExpenseProvider({ children }) {
             return;
         }
 
+        const myUid = currentUser.uid;
+        const myUsername = (currentUser.username || localStorage.getItem(`username_${currentUser.uid}`) || "").toLowerCase();
+        const myEmail = (currentUser.email || "").toLowerCase();
+
         // 1. Load from local cache immediately
         try {
-            const cached = localStorage.getItem(`groups_${currentUser.uid}`);
+            const cached = localStorage.getItem(`groups_${myUid}`);
             if (cached) {
                 setGroups(JSON.parse(cached));
             }
         } catch (e) {}
 
+        const groupsMap = new Map();
+
         const handleGroupsSnapshot = (snapshot) => {
-            const groupsData = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setGroups(groupsData);
+            snapshot.docs.forEach(doc => {
+                groupsMap.set(doc.id, {
+                    id: doc.id,
+                    ...doc.data()
+                });
+            });
+            const allGroups = Array.from(groupsMap.values());
+            allGroups.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+            setGroups(allGroups);
             try {
-                localStorage.setItem(`groups_${currentUser.uid}`, JSON.stringify(groupsData));
+                localStorage.setItem(`groups_${myUid}`, JSON.stringify(allGroups));
             } catch (e) {}
         };
 
-        let unsubscribeGroups = () => {};
+        const unsubs = [];
+
+        // Query by UID
         try {
-            const q = query(collection(db, "groups"), where("members", "array-contains", currentUser.uid));
-            unsubscribeGroups = onSnapshot(q, handleGroupsSnapshot, (err) => {
-                console.warn("Groups query failed, falling back to createdBy listener:", err);
-                const qFallback = query(collection(db, "groups"), where("createdBy", "==", currentUser.uid));
-                unsubscribeGroups = onSnapshot(qFallback, handleGroupsSnapshot, (fallbackErr) => {
-                    console.error("Groups fallback listener error:", fallbackErr);
-                });
-            });
-        } catch (e) {
-            console.error("Error setting up groups listener:", e);
+            const qUid = query(collection(db, "groups"), where("members", "array-contains", myUid));
+            unsubs.push(onSnapshot(qUid, handleGroupsSnapshot, console.warn));
+        } catch (e) {}
+
+        // Query by username
+        if (myUsername) {
+            try {
+                const qUname = query(collection(db, "groups"), where("members", "array-contains", myUsername));
+                unsubs.push(onSnapshot(qUname, handleGroupsSnapshot, console.warn));
+            } catch (e) {}
         }
 
+        // Query by email
+        if (myEmail) {
+            try {
+                const qEmail = query(collection(db, "groups"), where("members", "array-contains", myEmail));
+                unsubs.push(onSnapshot(qEmail, handleGroupsSnapshot, console.warn));
+            } catch (e) {}
+        }
+
+        // Query by createdBy
+        try {
+            const qCreated = query(collection(db, "groups"), where("createdBy", "==", myUid));
+            unsubs.push(onSnapshot(qCreated, handleGroupsSnapshot, console.warn));
+        } catch (e) {}
+
         return () => {
-            if (typeof unsubscribeGroups === 'function') unsubscribeGroups();
+            unsubs.forEach(unsub => {
+                if (typeof unsub === 'function') unsub();
+            });
         };
     }, [currentUser]);
 
     const createGroup = async (name, friendObjectsOrNames) => {
         if (!currentUser) return;
         const rawFriends = friendObjectsOrNames || [];
-        const friendsList = rawFriends.map(f => {
+
+        // Resolve registered friend objects from Firestore
+        const resolvedFriends = await Promise.all(rawFriends.map(async (f) => {
+            let uname = "";
+            let dname = "";
+            let fuid = "";
+            let femail = "";
+
             if (typeof f === 'string') {
-                return {
-                    uid: `friend_${Date.now()}_${f.toLowerCase().replace(/[^a-z0-9_]/g, '')}`,
-                    username: f.replace(/^@/, ''),
-                    displayName: f.replace(/^@/, '')
-                };
+                uname = f.trim().replace(/^@/, '').toLowerCase();
+                dname = f.trim().replace(/^@/, '');
+            } else if (typeof f === 'object' && f !== null) {
+                uname = (f.username || f.name || "").trim().replace(/^@/, '').toLowerCase();
+                dname = f.displayName || f.name || uname;
+                fuid = f.uid || "";
+                femail = (f.email || "").toLowerCase();
             }
-            return f;
+
+            // Look up in Firestore users if uid is missing or temporary
+            if (uname && (!fuid || fuid.startsWith('friend_') || fuid.startsWith('virtual_'))) {
+                try {
+                    const uSnap = await getDocs(query(collection(db, "users"), where("username", "==", uname)));
+                    if (!uSnap.empty) {
+                        const foundDoc = uSnap.docs[0];
+                        const data = foundDoc.data();
+                        fuid = foundDoc.id || data.uid;
+                        dname = data.displayName || dname;
+                        femail = (data.email || "").toLowerCase();
+                    }
+                } catch (err) {
+                    console.warn("Friend lookup error:", err);
+                }
+            }
+
+            return {
+                uid: fuid || `friend_${Date.now()}_${uname}`,
+                username: uname,
+                displayName: dname,
+                email: femail
+            };
+        }));
+
+        const creatorUsername = (currentUser.username || localStorage.getItem(`username_${currentUser.uid}`) || "").toLowerCase();
+        const creatorEmail = (currentUser.email || "").toLowerCase();
+
+        const allMemberIdentifiers = new Set([
+            currentUser.uid,
+            ...(creatorUsername ? [creatorUsername] : []),
+            ...(creatorEmail ? [creatorEmail] : [])
+        ]);
+
+        resolvedFriends.forEach(f => {
+            if (f.uid && !f.uid.startsWith('friend_') && !f.uid.startsWith('virtual_')) {
+                allMemberIdentifiers.add(f.uid);
+            }
+            if (f.username) {
+                allMemberIdentifiers.add(f.username.toLowerCase());
+            }
+            if (f.email) {
+                allMemberIdentifiers.add(f.email.toLowerCase());
+            }
         });
 
-        const friendUids = friendsList
-            .map(f => (f.uid && !f.uid.startsWith('friend_') && !f.uid.startsWith('virtual_') ? f.uid : null))
-            .filter(Boolean);
-
-        const allMemberUids = Array.from(new Set([currentUser.uid, ...friendUids]));
+        const membersArray = Array.from(allMemberIdentifiers);
 
         const tempGroupId = `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const newGroupObj = {
             id: tempGroupId,
             name: (name || "").trim(),
-            members: allMemberUids,
-            friends: friendsList,
+            members: membersArray,
+            friends: resolvedFriends,
             createdBy: currentUser.uid,
-            creatorEmail: (currentUser.email || "").toLowerCase(),
+            creatorUsername: creatorUsername || currentUser.displayName || "User",
+            creatorName: currentUser.displayName || creatorUsername || "User",
+            creatorEmail: creatorEmail,
             createdAt: new Date().toISOString()
         };
 
@@ -246,14 +324,7 @@ export function ExpenseProvider({ children }) {
 
         // 2. Persist to Firestore
         try {
-            const docRef = await addDoc(collection(db, "groups"), {
-                name: newGroupObj.name,
-                members: newGroupObj.members,
-                friends: newGroupObj.friends,
-                createdBy: newGroupObj.createdBy,
-                creatorEmail: newGroupObj.creatorEmail,
-                createdAt: newGroupObj.createdAt
-            });
+            const docRef = await addDoc(collection(db, "groups"), newGroupObj);
 
             setGroups(prev => {
                 const updated = prev.map(g => g.id === tempGroupId ? { ...g, id: docRef.id } : g);

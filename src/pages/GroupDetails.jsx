@@ -6,12 +6,14 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Input, Select } from "../components/ui/Input";
 import { useExpenses } from "../context/ExpenseContext";
+import { useAuth } from "../context/AuthContext";
 import { Plus, X, Receipt, ArrowRight, User, Check, Settings, Trash2, UserPlus, MoreVertical, Edit2, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 
 export function GroupDetails() {
     const { groupId } = useParams();
     const navigate = useNavigate();
+    const { currentUser } = useAuth();
     const { groups, fetchGroupExpenses, groupExpenses, addGroupExpense, updateGroupExpense, deleteGroupExpense, user } = useExpenses();
     const [isAddOpen, setIsAddOpen] = useState(false);
 
@@ -40,7 +42,43 @@ export function GroupDetails() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const group = groups.find(g => g.id === groupId);
-    const allMembers = useMemo(() => group ? ["Me", ...(group.friends?.map(f => f.username || f.name || f.displayName || (typeof f === 'string' ? f : 'Unknown')) || [])] : [], [group]);
+
+    // All members in the group (Creator + Friends) relative to viewer
+    const allMembers = useMemo(() => {
+        if (!group) return [];
+        const membersList = [];
+
+        const myUid = currentUser?.uid;
+        const myUsername = (currentUser?.username || localStorage.getItem(`username_${currentUser?.uid}`) || "").toLowerCase();
+
+        // 1. Is current user the creator?
+        const isCreator = group.createdBy === myUid;
+
+        if (isCreator) {
+            membersList.push("Me");
+        } else {
+            const creatorDisplay = group.creatorUsername || group.creatorName || (group.creatorEmail ? group.creatorEmail.split('@')[0] : "Creator");
+            membersList.push(creatorDisplay);
+        }
+
+        // Add friends
+        if (Array.isArray(group.friends)) {
+            group.friends.forEach(f => {
+                const fUsername = (f.username || f.displayName || f.name || (typeof f === 'string' ? f : '')).trim();
+                const isMe = (f.uid && f.uid === myUid) || (fUsername && fUsername.toLowerCase() === myUsername);
+
+                if (isMe) {
+                    if (!membersList.includes("Me")) {
+                        membersList.push("Me");
+                    }
+                } else if (fUsername && !membersList.includes(fUsername)) {
+                    membersList.push(fUsername);
+                }
+            });
+        }
+
+        return membersList.length > 0 ? membersList : ["Me"];
+    }, [group, currentUser]);
 
     useEffect(() => {
         if (groupId) {
@@ -62,48 +100,68 @@ export function GroupDetails() {
         const bals = {};
         allMembers.forEach(m => bals[m] = 0);
 
+        const myUid = (currentUser?.uid || "").toLowerCase();
+        const myUname = (currentUser?.username || localStorage.getItem(`username_${currentUser?.uid}`) || "").toLowerCase();
+        const creatorUname = (group.creatorUsername || group.creatorName || "").toLowerCase();
+        const creatorUid = (group.createdBy || "").toLowerCase();
+
+        const findMatchingMemberKey = (raw) => {
+            if (!raw) return allMembers[0] || "Me";
+            const str = String(raw).trim();
+            const lower = str.toLowerCase();
+
+            if (lower === "me" || lower === "you" || lower === myUid || lower === myUname) {
+                return allMembers.includes("Me") ? "Me" : allMembers[0];
+            }
+            if (lower === creatorUid || lower === creatorUname) {
+                const creatorKey = allMembers.find(m => m !== "Me") || "Creator";
+                return allMembers.includes(group.creatorUsername) ? group.creatorUsername : creatorKey;
+            }
+            const direct = allMembers.find(m => m.toLowerCase() === lower);
+            if (direct) return direct;
+            return allMembers.find(m => m !== "Me") || allMembers[0] || "Me";
+        };
+
         groupExpenses.forEach(exp => {
+            const cost = parseFloat(exp.amount) || 0;
+            if (cost <= 0) return;
+
             // Handle Settlement
             if (exp.type === 'SETTLEMENT') {
-                if (bals[exp.paidBy] !== undefined) bals[exp.paidBy] += exp.amount;
-                if (bals[exp.paidTo] !== undefined) bals[exp.paidTo] -= exp.amount;
+                const payerKey = findMatchingMemberKey(exp.paidBy);
+                const receiverKey = findMatchingMemberKey(exp.paidTo);
+                if (bals[payerKey] !== undefined) bals[payerKey] += cost;
+                if (bals[receiverKey] !== undefined) bals[receiverKey] -= cost;
                 return;
             }
 
-            // Handle Payer(s)
+            // Handle Payer
             if (exp.payers && exp.payers.length > 0) {
                 exp.payers.forEach(p => {
-                    const pName = p.uid === user.uid ? "Me" : (p.username || p.uid); // Try to match Member ID format
-                    // Simplified: We use "Me" or username as ID in allMembers.
-                    // If p.uid matches a member, add to them.
-                    // For now, let's assume p.uid is the identifier used in allMembers if not "Me".
-                    // Actually, addGroupExpense saves {uid: "Me", amount} for user.
-                    // Let's stick to the convention used in addGroupExpense: 
-                    // paidBy is a string from allMembers list ("Me", "alice", etc.)
-
-                    // Wait, our UI uses strings from allMembers. 
-                    // We should align data model. 
-                    // Let's assume exp.payers = [{ member: "Me", amount: 100 }, { member: "alice", amount: 50 }]
-                    if (bals[p.member] !== undefined) bals[p.member] += p.amount;
+                    const pKey = findMatchingMemberKey(p.member || p.uid || p.username);
+                    if (bals[pKey] !== undefined) bals[pKey] += (parseFloat(p.amount) || 0);
                 });
             } else {
-                if (bals[exp.paidBy] !== undefined) bals[exp.paidBy] += exp.amount;
+                const payerKey = findMatchingMemberKey(exp.paidBy);
+                if (bals[payerKey] !== undefined) bals[payerKey] += cost;
             }
 
-            const cost = exp.amount;
-
             // Split Logic
-            const splitAmong = exp.involvedMembers || allMembers;
-            const splitCount = splitAmong.length;
+            const rawInvolved = Array.isArray(exp.involvedMembers) && exp.involvedMembers.length > 0
+                ? exp.involvedMembers
+                : allMembers;
+
+            const matchedInvolved = Array.from(new Set(rawInvolved.map(im => findMatchingMemberKey(im))));
+            const splitCount = matchedInvolved.length || allMembers.length || 1;
             const splitAmount = cost / splitCount;
 
-            splitAmong.forEach(member => {
-                if (bals[member] !== undefined) bals[member] -= splitAmount;
+            matchedInvolved.forEach(memberKey => {
+                if (bals[memberKey] !== undefined) bals[memberKey] -= splitAmount;
             });
         });
 
         return bals;
-    }, [group, groupExpenses, user, allMembers]);
+    }, [group, groupExpenses, currentUser, allMembers]);
 
     const handleOpenEdit = (exp) => {
         setEditingExpense(exp);
