@@ -20,44 +20,93 @@ export function Groups() {
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
 
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     // Debounce Search
     useEffect(() => {
         const search = async () => {
-            if (searchInput.length < 3) {
+            const clean = searchInput.trim().replace(/^@/, '');
+            if (clean.length < 2) {
                 setSearchResults([]);
                 return;
             }
             setIsSearching(true);
             try {
-                const results = await searchUsers(searchInput);
+                const results = await searchUsers(clean);
                 setSearchResults(results);
             } catch (e) {
                 console.error("Search failed", e);
             }
             setIsSearching(false);
         };
-        const timeout = setTimeout(search, 500);
+        const timeout = setTimeout(search, 300);
         return () => clearTimeout(timeout);
     }, [searchInput, searchUsers]);
 
     const handleAddFriend = (user) => {
-        // Prevent adding duplicates if clicked quickly
-        if (!selectedFriends.some(f => f.uid === user.uid)) {
-            setSelectedFriends([...selectedFriends, user]);
+        if (!user) return;
+        // If user is string or object
+        const friendObj = typeof user === 'string'
+            ? {
+                uid: `friend_${Date.now()}_${user.toLowerCase().replace(/[^a-z0-9_]/g, '')}`,
+                username: user.replace(/^@/, '').trim(),
+                displayName: user.replace(/^@/, '').trim()
+              }
+            : user;
+
+        if (!selectedFriends.some(f => (f.uid && f.uid === friendObj.uid) || (f.username && f.username.toLowerCase() === friendObj.username.toLowerCase()))) {
+            setSelectedFriends([...selectedFriends, friendObj]);
         }
-        // Don't clear search input
+        setSearchInput("");
+        setSearchResults([]);
+    };
+
+    const handleAddCustomFriend = () => {
+        const clean = searchInput.trim().replace(/^@/, '');
+        if (!clean) return;
+        handleAddFriend(clean);
     };
 
     const handleCreateGroup = async (e) => {
         e.preventDefault();
-        if (!newGroupName) return;
-        // Pass the full user objects (uid, name, username)
-        await createGroup(newGroupName, selectedFriends);
-        setIsCreateOpen(false);
-        setNewGroupName("");
-        setSelectedFriends([]);
-        setSearchInput("");
-        setSearchResults([]);
+        if (!newGroupName.trim() || isSubmitting) return;
+
+        setIsSubmitting(true);
+        try {
+            let finalFriends = [...selectedFriends];
+            // If user typed in search box but didn't click Add before submitting
+            const pendingInput = searchInput.trim().replace(/^@/, '');
+            if (pendingInput) {
+                const matchedUser = searchResults.find(r => 
+                    r.username?.toLowerCase() === pendingInput.toLowerCase() || 
+                    r.email?.toLowerCase() === pendingInput.toLowerCase()
+                );
+                if (matchedUser) {
+                    if (!finalFriends.some(f => f.uid === matchedUser.uid)) {
+                        finalFriends.push(matchedUser);
+                    }
+                } else {
+                    if (!finalFriends.some(f => f.username?.toLowerCase() === pendingInput.toLowerCase())) {
+                        finalFriends.push({
+                            uid: `friend_${Date.now()}_${pendingInput.toLowerCase().replace(/[^a-z0-9_]/g, '')}`,
+                            username: pendingInput,
+                            displayName: pendingInput
+                        });
+                    }
+                }
+            }
+
+            await createGroup(newGroupName, finalFriends);
+            setIsCreateOpen(false);
+            setNewGroupName("");
+            setSelectedFriends([]);
+            setSearchInput("");
+            setSearchResults([]);
+        } catch (err) {
+            console.error("Failed to create group:", err);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleCreateDemoGroup = async () => {
@@ -179,26 +228,60 @@ export function Groups() {
                                         </div>
                                     )}
 
-                                    <div className="relative mb-3">
-                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
-                                            <div className="text-gray-500">@</div>
-                                        </div>
-                                        <Input
-                                            placeholder="Search username or email"
-                                            value={searchInput}
-                                            onChange={(e) => setSearchInput(e.target.value.toLowerCase())}
-                                            className="pl-8"
-                                        />
-                                        {isSearching && (
-                                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                                <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                                    <div className="flex gap-2 mb-3">
+                                        <div className="relative flex-1">
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                                <div className="text-gray-500">@</div>
                                             </div>
-                                        )}
+                                            <Input
+                                                placeholder="Search username or enter name"
+                                                value={searchInput}
+                                                onChange={(e) => setSearchInput(e.target.value.toLowerCase())}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        handleAddCustomFriend();
+                                                    }
+                                                }}
+                                                className="pl-8"
+                                            />
+                                            {isSearching && (
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                                                </div>
+                                            )}
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            onClick={handleAddCustomFriend}
+                                            disabled={!searchInput.trim().replace(/^@/, '')}
+                                            variant="secondary"
+                                            className="px-4 shrink-0"
+                                        >
+                                            Add
+                                        </Button>
                                     </div>
+
+                                    {/* Quick add prompt if text is entered */}
+                                    {searchInput.trim().replace(/^@/, '').length >= 2 && (
+                                        <div className="mb-3">
+                                            <div
+                                                onClick={handleAddCustomFriend}
+                                                className="flex items-center justify-between p-2.5 rounded-xl bg-accent-blue/10 border border-accent-blue/20 hover:bg-accent-blue/20 cursor-pointer transition-colors"
+                                            >
+                                                <div className="flex items-center gap-2 text-sm text-accent-blue">
+                                                    <Plus size={16} />
+                                                    <span>Add <strong>@{searchInput.trim().replace(/^@/, '')}</strong> to group</span>
+                                                </div>
+                                                <span className="text-xs bg-accent-blue/30 text-white px-2 py-0.5 rounded-md">Add</span>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Search Results */}
                                     {searchResults.length > 0 && (
                                         <div className="mb-4 space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                                            <p className="text-xs text-gray-400 font-medium px-1">Registered Users</p>
                                             {searchResults
                                                 .filter(user => !selectedFriends.some(f => f.uid === user.uid))
                                                 .map(user => (
@@ -223,8 +306,8 @@ export function Groups() {
                                     )}
                                 </div>
 
-                                <Button type="submit" className="w-full py-3">
-                                    Create Group
+                                <Button type="submit" disabled={isSubmitting || !newGroupName.trim()} className="w-full py-3">
+                                    {isSubmitting ? "Creating Group..." : "Create Group"}
                                 </Button>
                             </form>
                         </motion.div>

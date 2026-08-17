@@ -124,18 +124,36 @@ export function ExpenseProvider({ children }) {
         return () => unsubscribeGroups();
     }, [currentUser]);
 
-    const createGroup = async (name, friendNames) => {
+    const createGroup = async (name, friendObjectsOrNames) => {
         if (!currentUser) return;
         try {
-            // group members: current user + virtual friends
-            // We store virtual friends as simple strings in a 'friends' array
-            // Real members (authUser) in 'members' array
+            const rawFriends = friendObjectsOrNames || [];
+            // Format friends into consistent objects
+            const friendsList = rawFriends.map(f => {
+                if (typeof f === 'string') {
+                    return {
+                        uid: `friend_${Date.now()}_${f.toLowerCase().replace(/[^a-z0-9_]/g, '')}`,
+                        username: f.replace(/^@/, ''),
+                        displayName: f.replace(/^@/, '')
+                    };
+                }
+                return f;
+            });
+
+            // Extract uids of registered friends
+            const friendUids = friendsList
+                .map(f => (f.uid && !f.uid.startsWith('friend_') && !f.uid.startsWith('virtual_') ? f.uid : null))
+                .filter(Boolean);
+
+            const allMemberUids = Array.from(new Set([currentUser.uid, ...friendUids]));
+
             await addDoc(collection(db, "groups"), {
-                name,
-                members: [currentUser.uid],
-                friends: friendNames || [], // ["Alice", "Bob"]
+                name: name.trim(),
+                members: allMemberUids,
+                friends: friendsList,
                 createdBy: currentUser.uid,
-                createdAt: new Date()
+                creatorEmail: (currentUser.email || "").toLowerCase(),
+                createdAt: new Date().toISOString()
             });
         } catch (e) {
             console.error("Error creating group: ", e);
@@ -368,39 +386,66 @@ export function ExpenseProvider({ children }) {
     }, [expenses]);
 
     const searchUsers = async (searchTerm) => {
-        const lowerTerm = searchTerm.toLowerCase();
-        // Query users where username >= searchTerm
-        const qUsername = query(
-            collection(db, "users"),
-            where("username", ">=", lowerTerm),
-            where("username", "<=", lowerTerm + '\uf8ff')
-        );
+        if (!searchTerm) return [];
+        const cleanTerm = searchTerm.trim().toLowerCase().replace(/^@/, '');
+        if (cleanTerm.length < 2) return [];
 
-        // Query by email
-        const qEmail = query(
-            collection(db, "users"),
-            where("email", ">=", lowerTerm),
-            where("email", "<=", lowerTerm + '\uf8ff')
-        );
+        try {
+            // Query users where username matches prefix
+            const qUsername = query(
+                collection(db, "users"),
+                where("username", ">=", cleanTerm),
+                where("username", "<=", cleanTerm + '\uf8ff')
+            );
 
-        const [usernameSnap, emailSnap] = await Promise.all([
-            getDocs(qUsername),
-            getDocs(qEmail)
-        ]);
+            // Query by email
+            const qEmail = query(
+                collection(db, "users"),
+                where("email", ">=", cleanTerm),
+                where("email", "<=", cleanTerm + '\uf8ff')
+            );
 
-        const results = new Map();
+            const [usernameSnap, emailSnap] = await Promise.allSettled([
+                getDocs(qUsername),
+                getDocs(qEmail)
+            ]);
 
-        usernameSnap.docs.forEach(doc => {
-            results.set(doc.id, { uid: doc.id, ...doc.data() });
-        });
+            const results = new Map();
 
-        emailSnap.docs.forEach(doc => {
-            if (!results.has(doc.id)) {
-                results.set(doc.id, { uid: doc.id, ...doc.data() });
+            if (usernameSnap.status === 'fulfilled') {
+                usernameSnap.value.docs.forEach(doc => {
+                    const data = doc.data();
+                    results.set(doc.id, {
+                        uid: doc.id,
+                        ...data,
+                        username: data.username || doc.id
+                    });
+                });
             }
-        });
 
-        return Array.from(results.values());
+            if (emailSnap.status === 'fulfilled') {
+                emailSnap.value.docs.forEach(doc => {
+                    if (!results.has(doc.id)) {
+                        const data = doc.data();
+                        results.set(doc.id, {
+                            uid: doc.id,
+                            ...data,
+                            username: data.username || data.email?.split('@')[0] || doc.id
+                        });
+                    }
+                });
+            }
+
+            // Exclude current user from search results
+            if (currentUser?.uid) {
+                results.delete(currentUser.uid);
+            }
+
+            return Array.from(results.values());
+        } catch (err) {
+            console.error("searchUsers failed:", err);
+            return [];
+        }
     };
 
     const updateGroup = async (groupId, data) => {
@@ -414,18 +459,18 @@ export function ExpenseProvider({ children }) {
     };
 
     const addMemberToGroup = async (groupId, newMember) => {
-        // newMember: { uid, username, displayName }
-        if (!currentUser) return;
+        if (!currentUser || !groupId || !newMember) return;
         const groupRef = doc(db, "groups", groupId);
-        // We need to update 'members' array (uids) and 'friends' array (for display/virtual)
-        // Note: Our previous createGroup used 'friends' as full objects now? 
-        // Let's check createGroup in Groups.jsx. It passes selectedFriends array of objects.
-        // But createGroup in ExpenseContext uses 'friends' field.
-
-        await updateDoc(groupRef, {
-            members: arrayUnion(newMember.uid),
+        
+        const updates = {
             friends: arrayUnion(newMember)
-        });
+        };
+
+        if (newMember.uid && !newMember.uid.startsWith('friend_') && !newMember.uid.startsWith('virtual_')) {
+            updates.members = arrayUnion(newMember.uid);
+        }
+
+        await updateDoc(groupRef, updates);
     };
 
     return (

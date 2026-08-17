@@ -242,8 +242,16 @@ export function GroupDetails() {
     };
 
     const handleAddNewMember = async (user) => {
-        if (!group) return;
-        await addMemberToGroup(groupId, user); // user: { uid, username, displayName }
+        if (!group || !user) return;
+        const friendObj = typeof user === 'string'
+            ? {
+                uid: `friend_${Date.now()}_${user.toLowerCase().replace(/[^a-z0-9_]/g, '')}`,
+                username: user.replace(/^@/, '').trim(),
+                displayName: user.replace(/^@/, '').trim()
+              }
+            : user;
+
+        await addMemberToGroup(groupId, friendObj);
         setSearchInput("");
         setSearchResults([]);
     };
@@ -557,25 +565,66 @@ export function GroupDetails() {
                     {/* Add Member */}
                     <div>
                         <label className="block text-sm font-medium text-gray-400 mb-2">Add Member</label>
-                        <div className="relative mb-3">
-                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
-                                <div className="text-gray-500">@</div>
-                            </div>
-                            <Input
-                                placeholder="Search username to add"
-                                value={searchInput}
-                                onChange={(e) => setSearchInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
-                                className="pl-8"
-                            />
-                            {isSearching && (
-                                <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                        <div className="flex gap-2 mb-3">
+                            <div className="relative flex-1">
+                                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                                    <div className="text-gray-500">@</div>
                                 </div>
-                            )}
+                                <Input
+                                    placeholder="Search username or enter name"
+                                    value={searchInput}
+                                    onChange={(e) => setSearchInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            if (searchInput.trim()) {
+                                                handleAddNewMember(searchInput.trim());
+                                            }
+                                        }
+                                    }}
+                                    className="pl-8"
+                                />
+                                {isSearching && (
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                        <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                                    </div>
+                                )}
+                            </div>
+                            <Button
+                                type="button"
+                                onClick={() => {
+                                    if (searchInput.trim()) {
+                                        handleAddNewMember(searchInput.trim());
+                                    }
+                                }}
+                                disabled={!searchInput.trim()}
+                                variant="secondary"
+                                className="px-4 shrink-0"
+                            >
+                                Add
+                            </Button>
                         </div>
+
+                        {/* Quick add prompt */}
+                        {searchInput.trim().length >= 2 && (
+                            <div className="mb-3">
+                                <div
+                                    onClick={() => handleAddNewMember(searchInput.trim())}
+                                    className="flex items-center justify-between p-2.5 rounded-xl bg-accent-blue/10 border border-accent-blue/20 hover:bg-accent-blue/20 cursor-pointer transition-colors"
+                                >
+                                    <div className="flex items-center gap-2 text-sm text-accent-blue">
+                                        <UserPlus size={16} />
+                                        <span>Add <strong>@{searchInput.trim()}</strong> to group</span>
+                                    </div>
+                                    <span className="text-xs bg-accent-blue/30 text-white px-2 py-0.5 rounded-md">Add</span>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Results */}
                         {searchResults.length > 0 && (
-                            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar bg-white-5 rounded-xl p-2">
+                            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar bg-white-5 rounded-xl p-2 mb-3">
+                                <p className="text-xs text-gray-400 font-medium px-1">Registered Users</p>
                                 {searchResults.map(user => (
                                     <div
                                         key={user.uid}
