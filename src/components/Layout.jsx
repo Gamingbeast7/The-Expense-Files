@@ -90,6 +90,9 @@ export function Layout({ children }) {
                                     )}
                                 </div>
                                 <h2 className="text-xl font-bold text-white">{currentUser?.displayName || "User"}</h2>
+                                {currentUser?.username && (
+                                    <p className="text-xs text-accent-blue font-medium mt-0.5 mb-1">@{currentUser.username}</p>
+                                )}
                                 <p className="text-sm text-gray-400">{currentUser?.email}</p>
                             </div>
 

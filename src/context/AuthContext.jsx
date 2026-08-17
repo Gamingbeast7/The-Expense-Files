@@ -31,25 +31,58 @@ export function AuthProvider({ children }) {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             try {
                 if (user) {
-                    // Fetch additional user data from Firestore (e.g. username)
+                    const normalizedEmail = (user.email || "").toLowerCase();
+                    const cachedUsername = localStorage.getItem(`username_${user.uid}`) || 
+                                           (normalizedEmail ? localStorage.getItem(`username_${normalizedEmail}`) : null);
+
+                    let userData = {
+                        uid: user.uid,
+                        email: normalizedEmail,
+                        displayName: user.displayName || "",
+                        photoURL: user.photoURL || "",
+                        username: cachedUsername || ""
+                    };
+
+                    // Fetch additional user data from Firestore
                     const userDocRef = doc(db, "users", user.uid);
                     try {
                         const userDocSnap = await getDoc(userDocRef);
                         if (userDocSnap.exists()) {
-                            setCurrentUser({ ...user, ...userDocSnap.data() });
+                            const firestoreData = userDocSnap.data();
+                            const resolvedUsername = firestoreData.username || cachedUsername || "";
+                            
+                            userData = {
+                                ...user,
+                                ...firestoreData,
+                                username: resolvedUsername
+                            };
+
+                            if (resolvedUsername) {
+                                localStorage.setItem(`username_${user.uid}`, resolvedUsername);
+                                if (normalizedEmail) localStorage.setItem(`username_${normalizedEmail}`, resolvedUsername);
+                            }
                         } else {
+                            // Create document linking email and username
                             await setDoc(userDocRef, {
-                                email: user.email,
-                                displayName: user.displayName,
-                                photoURL: user.photoURL,
-                                createdAt: new Date()
+                                uid: user.uid,
+                                email: normalizedEmail,
+                                displayName: user.displayName || "",
+                                photoURL: user.photoURL || "",
+                                username: cachedUsername || "",
+                                createdAt: new Date().toISOString()
                             }, { merge: true });
-                            setCurrentUser(user);
+
+                            userData = {
+                                ...user,
+                                email: normalizedEmail,
+                                username: cachedUsername || ""
+                            };
                         }
                     } catch (firestoreErr) {
                         console.warn("Could not fetch or create user document in Firestore:", firestoreErr);
-                        setCurrentUser(user);
                     }
+
+                    setCurrentUser(userData);
                 } else {
                     setCurrentUser(null);
                 }
@@ -64,34 +97,55 @@ export function AuthProvider({ children }) {
         return unsubscribe;
     }, []);
 
-    const checkUsernameAvailability = async (username) => {
+    const checkUsernameAvailability = async (rawUsername) => {
+        const clean = rawUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
+        if (!clean) return false;
         try {
-            const q = query(collection(db, "users"), where("username", "==", username));
+            const q = query(collection(db, "users"), where("username", "==", clean));
             const querySnapshot = await getDocs(q);
-            return querySnapshot.empty;
+            // Available if no docs found, or the only doc found is the current user's
+            if (querySnapshot.empty) return true;
+            return querySnapshot.docs.every(d => d.id === currentUser?.uid);
         } catch (err) {
             console.error("Error checking username availability:", err);
             return true;
         }
     };
 
-    const updateUsername = async (username) => {
+    const updateUsername = async (rawUsername) => {
         if (!currentUser) return;
+        const clean = rawUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
+        if (!clean) return;
+
+        const normalizedEmail = (currentUser.email || "").toLowerCase();
+
+        // 1. Immediately cache locally
+        localStorage.setItem(`username_${currentUser.uid}`, clean);
+        if (normalizedEmail) {
+            localStorage.setItem(`username_${normalizedEmail}`, clean);
+        }
+
+        // 2. Persist to Firestore associated with the user's UID and email
         try {
             const userDocRef = doc(db, "users", currentUser.uid);
             await setDoc(userDocRef, {
-                username,
-                email: currentUser.email || "",
+                uid: currentUser.uid,
+                username: clean,
+                email: normalizedEmail,
                 displayName: currentUser.displayName || "",
                 photoURL: currentUser.photoURL || "",
-                updatedAt: new Date()
+                updatedAt: new Date().toISOString()
             }, { merge: true });
-            setCurrentUser(prev => ({ ...prev, username }));
         } catch (err) {
             console.error("Error updating username in Firestore:", err);
-            // Fallback: still update user in memory so the app is not blocked
-            setCurrentUser(prev => ({ ...prev, username }));
         }
+
+        // 3. Update active current user state
+        setCurrentUser(prev => ({
+            ...prev,
+            username: clean,
+            email: normalizedEmail
+        }));
     };
 
     const value = {
