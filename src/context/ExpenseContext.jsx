@@ -145,7 +145,17 @@ export function ExpenseProvider({ children }) {
     }, [currentUser]);
 
     // Group Features State
-    const [groups, setGroups] = useState([]);
+    const [groups, setGroups] = useState(() => {
+        if (currentUser?.uid) {
+            try {
+                const saved = localStorage.getItem(`groups_${currentUser.uid}`);
+                return saved ? JSON.parse(saved) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+        return [];
+    });
     const [groupExpenses, setGroupExpenses] = useState([]);
     const [currentGroup, setCurrentGroup] = useState(null);
 
@@ -156,69 +166,138 @@ export function ExpenseProvider({ children }) {
             return;
         }
 
-        // In a real app, we'd query groups where 'members' array-contains currentUser.uid
-        // For MVP with "Virtual Friends", we just store groups under the user's document for now
-        // OR we create a top-level 'groups' collection if we want real sharing later.
-        // Let's go with top-level 'groups' collection where members include current user.
+        // 1. Load from local cache immediately
+        try {
+            const cached = localStorage.getItem(`groups_${currentUser.uid}`);
+            if (cached) {
+                setGroups(JSON.parse(cached));
+            }
+        } catch (e) {}
 
-        const q = query(collection(db, "groups"), where("members", "array-contains", currentUser.uid));
-        const unsubscribeGroups = onSnapshot(q, (snapshot) => {
+        const handleGroupsSnapshot = (snapshot) => {
             const groupsData = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             }));
             setGroups(groupsData);
-        });
+            try {
+                localStorage.setItem(`groups_${currentUser.uid}`, JSON.stringify(groupsData));
+            } catch (e) {}
+        };
 
-        return () => unsubscribeGroups();
+        let unsubscribeGroups = () => {};
+        try {
+            const q = query(collection(db, "groups"), where("members", "array-contains", currentUser.uid));
+            unsubscribeGroups = onSnapshot(q, handleGroupsSnapshot, (err) => {
+                console.warn("Groups query failed, falling back to createdBy listener:", err);
+                const qFallback = query(collection(db, "groups"), where("createdBy", "==", currentUser.uid));
+                unsubscribeGroups = onSnapshot(qFallback, handleGroupsSnapshot, (fallbackErr) => {
+                    console.error("Groups fallback listener error:", fallbackErr);
+                });
+            });
+        } catch (e) {
+            console.error("Error setting up groups listener:", e);
+        }
+
+        return () => {
+            if (typeof unsubscribeGroups === 'function') unsubscribeGroups();
+        };
     }, [currentUser]);
 
     const createGroup = async (name, friendObjectsOrNames) => {
         if (!currentUser) return;
+        const rawFriends = friendObjectsOrNames || [];
+        const friendsList = rawFriends.map(f => {
+            if (typeof f === 'string') {
+                return {
+                    uid: `friend_${Date.now()}_${f.toLowerCase().replace(/[^a-z0-9_]/g, '')}`,
+                    username: f.replace(/^@/, ''),
+                    displayName: f.replace(/^@/, '')
+                };
+            }
+            return f;
+        });
+
+        const friendUids = friendsList
+            .map(f => (f.uid && !f.uid.startsWith('friend_') && !f.uid.startsWith('virtual_') ? f.uid : null))
+            .filter(Boolean);
+
+        const allMemberUids = Array.from(new Set([currentUser.uid, ...friendUids]));
+
+        const tempGroupId = `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const newGroupObj = {
+            id: tempGroupId,
+            name: (name || "").trim(),
+            members: allMemberUids,
+            friends: friendsList,
+            createdBy: currentUser.uid,
+            creatorEmail: (currentUser.email || "").toLowerCase(),
+            createdAt: new Date().toISOString()
+        };
+
+        // 1. Optimistically update local state & localStorage immediately
+        setGroups(prev => {
+            const updated = [newGroupObj, ...prev.filter(g => g.id !== tempGroupId)];
+            try {
+                localStorage.setItem(`groups_${currentUser.uid}`, JSON.stringify(updated));
+            } catch (err) {}
+            return updated;
+        });
+
+        // 2. Persist to Firestore
         try {
-            const rawFriends = friendObjectsOrNames || [];
-            // Format friends into consistent objects
-            const friendsList = rawFriends.map(f => {
-                if (typeof f === 'string') {
-                    return {
-                        uid: `friend_${Date.now()}_${f.toLowerCase().replace(/[^a-z0-9_]/g, '')}`,
-                        username: f.replace(/^@/, ''),
-                        displayName: f.replace(/^@/, '')
-                    };
-                }
-                return f;
+            const docRef = await addDoc(collection(db, "groups"), {
+                name: newGroupObj.name,
+                members: newGroupObj.members,
+                friends: newGroupObj.friends,
+                createdBy: newGroupObj.createdBy,
+                creatorEmail: newGroupObj.creatorEmail,
+                createdAt: newGroupObj.createdAt
             });
 
-            // Extract uids of registered friends
-            const friendUids = friendsList
-                .map(f => (f.uid && !f.uid.startsWith('friend_') && !f.uid.startsWith('virtual_') ? f.uid : null))
-                .filter(Boolean);
-
-            const allMemberUids = Array.from(new Set([currentUser.uid, ...friendUids]));
-
-            await addDoc(collection(db, "groups"), {
-                name: name.trim(),
-                members: allMemberUids,
-                friends: friendsList,
-                createdBy: currentUser.uid,
-                creatorEmail: (currentUser.email || "").toLowerCase(),
-                createdAt: new Date().toISOString()
+            setGroups(prev => {
+                const updated = prev.map(g => g.id === tempGroupId ? { ...g, id: docRef.id } : g);
+                try {
+                    localStorage.setItem(`groups_${currentUser.uid}`, JSON.stringify(updated));
+                } catch (err) {}
+                return updated;
             });
+
+            return docRef.id;
         } catch (e) {
-            console.error("Error creating group: ", e);
-            throw e;
+            console.error("Error creating group in Firestore: ", e);
+            return tempGroupId;
         }
     };
 
     const fetchGroupExpenses = (groupId) => {
-        const expensesRef = collection(db, "groups", groupId, "expenses");
-        return onSnapshot(query(expensesRef, orderBy("date", "desc")), (snapshot) => {
-            const data = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
-            setGroupExpenses(data);
-        });
+        if (!groupId) return () => {};
+        try {
+            const expensesRef = collection(db, "groups", groupId, "expenses");
+            return onSnapshot(
+                query(expensesRef, orderBy("date", "desc")),
+                (snapshot) => {
+                    const data = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    setGroupExpenses(data);
+                },
+                (err) => {
+                    console.warn("Ordered group expenses failed, falling back:", err);
+                    onSnapshot(expensesRef, (snapshot) => {
+                        const data = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }));
+                        data.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                        setGroupExpenses(data);
+                    }, console.error);
+                }
+            );
+        } catch (e) {
+            return () => {};
+        }
     };
 
     const addGroupExpense = async (groupId, expenseData) => {
