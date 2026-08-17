@@ -18,11 +18,13 @@ export function Footer() {
                     <span className="hover:text-white transition-colors cursor-default">Krrish Jain</span>
                     <span className="text-white-10">•</span>
                     <span className="hover:text-white transition-colors cursor-default">Vishal S</span>
+                    <span className="text-white-10">•</span>
+                    <span className="hover:text-white transition-colors cursor-default">Manav R</span>
                 </div>
 
                 <div className="flex justify-center gap-6 text-xs font-medium text-gray-400">
                     <button onClick={() => navigate("/about")} className="hover:text-white transition-colors">About Us</button>
-                    <a href="https://github.com/pratham-jain" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a>
+                    <a href="https://github.com/Gamingbeast7" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">GitHub</a>
                 </div>
             </div>
         </footer>

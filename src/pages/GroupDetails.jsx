@@ -516,18 +516,15 @@ export function GroupDetails() {
                                     </div>
                                 </div>
 
-                            </div>
-
                             <Button type="submit" className="w-full py-3">
                                 Add Expense
                             </Button>
                         </form>
                     </motion.div>
-                    </div >
-    )
-}
+                </div>
+            )}
 
-{/* Group Settings Modal */ }
+            {/* Group Settings Modal */}
 {
     isSettingsOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -684,9 +681,8 @@ export function GroupDetails() {
                 </form>
             </motion.div>
         </div>
-    )
-}
-            </AnimatePresence >
-        </div >
+    )}
+</AnimatePresence>
+        </div>
     );
 }

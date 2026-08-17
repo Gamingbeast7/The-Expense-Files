@@ -7,21 +7,21 @@ import prathamImg from "../assets/Pratham.JPG";
 import yashImg from "../assets/Yash.jpeg";
 import krrishImg from "../assets/Krrish.jpeg";
 import vishalImg from "../assets/Vishal.jpeg";
-
-// import prathamImg from "../assets/pratham.jpg";
+import manavImg from "../assets/Manav.jpeg";
 
 const TEAM = [
     { name: "Pratham Jain", role: "Full Stack Developer", image: prathamImg },
     { name: "Yash Jain", role: "Frontend Developer", image: yashImg },
     { name: "Krrish Jain", role: "UI/UX Designer", image: krrishImg },
     { name: "Vishal S", role: "Backend Developer", image: vishalImg },
+    { name: "Manav R", role: "Full Stack Developer", image: manavImg },
 ];
 
 export function About() {
     const navigate = useNavigate();
 
     return (
-        <div className="max-w-4xl mx-auto pb-20">
+        <div className="max-w-5xl mx-auto pb-20">
             <button
                 onClick={() => navigate("/")}
                 className="mb-8 flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
@@ -59,7 +59,7 @@ export function About() {
             </div>
 
             <h2 className="text-2xl font-bold text-white mb-8 text-center">Meet the Team</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                 {TEAM.map((member, index) => (
                     <motion.div
                         key={member.name}
