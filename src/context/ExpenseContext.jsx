@@ -254,15 +254,35 @@ export function ExpenseProvider({ children }) {
             }
 
             // Look up in Firestore users if uid is missing or temporary
-            if (uname && (!fuid || fuid.startsWith('friend_') || fuid.startsWith('virtual_'))) {
+            if (!fuid || fuid.startsWith('friend_') || fuid.startsWith('virtual_')) {
                 try {
-                    const uSnap = await getDocs(query(collection(db, "users"), where("username", "==", uname)));
-                    if (!uSnap.empty) {
-                        const foundDoc = uSnap.docs[0];
-                        const data = foundDoc.data();
-                        fuid = foundDoc.id || data.uid;
-                        dname = data.displayName || dname;
-                        femail = (data.email || "").toLowerCase();
+                    // Try username lookup
+                    if (uname) {
+                        const uSnap = await getDocs(query(collection(db, "users"), where("username", "==", uname)));
+                        if (!uSnap.empty) {
+                            const foundDoc = uSnap.docs[0];
+                            const data = foundDoc.data();
+                            fuid = foundDoc.id || data.uid;
+                            dname = data.displayName || dname;
+                            femail = (data.email || "").toLowerCase();
+                            uname = (data.username || uname).toLowerCase();
+                        }
+                    }
+
+                    // Try email lookup if not found
+                    if (!fuid || fuid.startsWith('friend_')) {
+                        const searchEmail = femail || uname;
+                        if (searchEmail.includes('@') || searchEmail.length >= 3) {
+                            const eSnap = await getDocs(query(collection(db, "users"), where("email", "==", searchEmail.toLowerCase())));
+                            if (!eSnap.empty) {
+                                const foundDoc = eSnap.docs[0];
+                                const data = foundDoc.data();
+                                fuid = foundDoc.id || data.uid;
+                                uname = (data.username || data.email?.split('@')[0] || uname).toLowerCase();
+                                dname = data.displayName || dname;
+                                femail = (data.email || "").toLowerCase();
+                            }
+                        }
                     }
                 } catch (err) {
                     console.warn("Friend lookup error:", err);
@@ -282,23 +302,25 @@ export function ExpenseProvider({ children }) {
 
         const allMemberIdentifiers = new Set([
             currentUser.uid,
-            ...(creatorUsername ? [creatorUsername] : []),
-            ...(creatorEmail ? [creatorEmail] : [])
+            ...(creatorUsername ? [creatorUsername, creatorUsername.toLowerCase()] : []),
+            ...(creatorEmail ? [creatorEmail, creatorEmail.toLowerCase()] : [])
         ]);
 
         resolvedFriends.forEach(f => {
-            if (f.uid && !f.uid.startsWith('friend_') && !f.uid.startsWith('virtual_')) {
+            if (f.uid) {
                 allMemberIdentifiers.add(f.uid);
             }
             if (f.username) {
+                allMemberIdentifiers.add(f.username);
                 allMemberIdentifiers.add(f.username.toLowerCase());
             }
             if (f.email) {
+                allMemberIdentifiers.add(f.email);
                 allMemberIdentifiers.add(f.email.toLowerCase());
             }
         });
 
-        const membersArray = Array.from(allMemberIdentifiers);
+        const membersArray = Array.from(allMemberIdentifiers).filter(Boolean);
 
         const tempGroupId = `group_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const newGroupObj = {
@@ -770,17 +792,98 @@ export function ExpenseProvider({ children }) {
 
     const addMemberToGroup = async (groupId, newMember) => {
         if (!currentUser || !groupId || !newMember) return;
-        const groupRef = doc(db, "groups", groupId);
-        
-        const updates = {
-            friends: arrayUnion(newMember)
-        };
 
-        if (newMember.uid && !newMember.uid.startsWith('friend_') && !newMember.uid.startsWith('virtual_')) {
-            updates.members = arrayUnion(newMember.uid);
+        let uname = "";
+        let dname = "";
+        let fuid = "";
+        let femail = "";
+
+        if (typeof newMember === 'string') {
+            uname = newMember.trim().replace(/^@/, '').toLowerCase();
+            dname = newMember.trim().replace(/^@/, '');
+        } else if (typeof newMember === 'object' && newMember !== null) {
+            uname = (newMember.username || newMember.name || "").trim().replace(/^@/, '').toLowerCase();
+            dname = newMember.displayName || newMember.name || uname;
+            fuid = newMember.uid || "";
+            femail = (newMember.email || "").toLowerCase();
         }
 
-        await updateDoc(groupRef, updates);
+        // Look up registered user by username or email in Firestore
+        if (!fuid || fuid.startsWith('friend_') || fuid.startsWith('virtual_')) {
+            try {
+                if (uname) {
+                    const uSnap = await getDocs(query(collection(db, "users"), where("username", "==", uname)));
+                    if (!uSnap.empty) {
+                        const foundDoc = uSnap.docs[0];
+                        const data = foundDoc.data();
+                        fuid = foundDoc.id || data.uid;
+                        dname = data.displayName || dname;
+                        femail = (data.email || "").toLowerCase();
+                    }
+                }
+                if (!fuid || fuid.startsWith('friend_')) {
+                    const searchEmail = femail || uname;
+                    if (searchEmail.includes('@')) {
+                        const eSnap = await getDocs(query(collection(db, "users"), where("email", "==", searchEmail.toLowerCase())));
+                        if (!eSnap.empty) {
+                            const foundDoc = eSnap.docs[0];
+                            const data = foundDoc.data();
+                            fuid = foundDoc.id || data.uid;
+                            uname = (data.username || data.email?.split('@')[0] || uname).toLowerCase();
+                            dname = data.displayName || dname;
+                            femail = (data.email || "").toLowerCase();
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn("User lookup in addMemberToGroup error:", err);
+            }
+        }
+
+        const resolvedFriend = {
+            uid: fuid || `friend_${Date.now()}_${uname}`,
+            username: uname,
+            displayName: dname,
+            email: femail
+        };
+
+        const identifiersToAdd = [
+            uname,
+            uname.toLowerCase(),
+            ...(fuid ? [fuid] : []),
+            ...(femail ? [femail, femail.toLowerCase()] : [])
+        ].filter(Boolean);
+
+        // Optimistically update local state
+        setGroups(prev => {
+            const updated = prev.map(g => {
+                if (g.id === groupId) {
+                    const currentFriends = g.friends || [];
+                    const currentMembers = g.members || [];
+                    return {
+                        ...g,
+                        friends: [...currentFriends.filter(f => (f.username || '').toLowerCase() !== uname), resolvedFriend],
+                        members: Array.from(new Set([...currentMembers, ...identifiersToAdd]))
+                    };
+                }
+                return g;
+            });
+            try {
+                localStorage.setItem(`groups_${currentUser.uid}`, JSON.stringify(updated));
+            } catch (e) {}
+            return updated;
+        });
+
+        // Update Firestore
+        try {
+            const groupRef = doc(db, "groups", groupId);
+            await updateDoc(groupRef, {
+                friends: arrayUnion(resolvedFriend),
+                members: arrayUnion(...identifiersToAdd)
+            });
+        } catch (e) {
+            console.error("Error adding member to group in Firestore:", e);
+        }
     };
 
     return (
