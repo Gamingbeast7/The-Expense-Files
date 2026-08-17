@@ -163,6 +163,19 @@ export function GroupDetails() {
         return bals;
     }, [group, groupExpenses, currentUser, allMembers]);
 
+    const formatMemberName = (m) => {
+        if (!m) return "";
+        const clean = String(m).trim();
+        const lower = clean.toLowerCase();
+        const myUid = (currentUser?.uid || "").toLowerCase();
+        const myUname = (currentUser?.username || localStorage.getItem(`username_${currentUser?.uid}`) || "").toLowerCase();
+
+        if (lower === "me" || lower === "you" || (myUid && lower === myUid) || (myUname && lower === myUname)) {
+            return "You";
+        }
+        return clean.startsWith('@') ? clean : `@${clean}`;
+    };
+
     const handleOpenEdit = (exp) => {
         setEditingExpense(exp);
         setTitle(exp.title);
@@ -192,12 +205,15 @@ export function GroupDetails() {
         e.preventDefault();
         if (!settleAmount || !settlePayer || !settleReceiver) return;
 
+        const effectivePayer = settlePayer === "Me" ? (currentUser?.username || "Me") : settlePayer;
+        const effectiveReceiver = settleReceiver === "Me" ? (currentUser?.username || "Me") : settleReceiver;
+
         await addGroupExpense(groupId, {
             title: "Settlement",
             amount: parseFloat(settleAmount),
             date: new Date().toISOString(),
-            paidBy: settlePayer,
-            paidTo: settleReceiver,
+            paidBy: effectivePayer,
+            paidTo: effectiveReceiver,
             type: "SETTLEMENT",
             syncToPersonal: false
         });
@@ -227,12 +243,13 @@ export function GroupDetails() {
         setIsSubmittingExpense(true);
         try {
             const membersToSplit = involvedMembers.length > 0 ? involvedMembers : allMembers;
+            const effectivePaidBy = isMultiPayer ? 'Multiple' : (paidBy === 'Me' ? (currentUser?.username || 'Me') : paidBy);
 
             const expenseData = {
                 title: title.trim() || "Group Expense",
                 amount: parsedAmount,
                 date: editingExpense ? editingExpense.date : new Date().toISOString(),
-                paidBy: isMultiPayer ? 'Multiple' : (paidBy || "Me"),
+                paidBy: effectivePaidBy,
                 payers: isMultiPayer ? payers : [],
                 splitType: splitType || "EQUAL",
                 involvedMembers: membersToSplit,
@@ -277,23 +294,21 @@ export function GroupDetails() {
 
     useEffect(() => {
         const search = async () => {
-            if (searchInput.length < 3) {
+            if (searchInput.length < 2) {
                 setSearchResults([]);
                 return;
             }
             setIsSearching(true);
             try {
                 const results = await searchUsers(searchInput);
-                // Filter out existing members
                 const currentUids = group?.members || [];
-                // Also filter by username if virtual friend exists? For now just UIDs.
                 setSearchResults(results.filter(r => !currentUids.includes(r.uid)));
             } catch (e) {
                 console.error("Search failed", e);
             }
             setIsSearching(false);
         };
-        const timeout = setTimeout(search, 500);
+        const timeout = setTimeout(search, 300);
         return () => clearTimeout(timeout);
     }, [searchInput, group, searchUsers]);
 
@@ -306,6 +321,7 @@ export function GroupDetails() {
     const handleDeleteGroup = async () => {
         if (!group) return;
         if (window.confirm("Are you sure you want to delete this group? This action cannot be undone.")) {
+            setIsSettingsOpen(false);
             await deleteGroup(groupId);
             navigate("/groups");
         }
@@ -339,21 +355,25 @@ export function GroupDetails() {
                     <div>
                         <h1 className="text-3xl font-bold text-white mb-2">{group.name}</h1>
                         <p className="text-gray-400">
-                            Members: You, {group.friends?.map(f => f.username || f.name || f.displayName || (typeof f === 'string' ? f : 'Friend')).join(", ")}
+                            Members: {allMembers.map(m => formatMemberName(m)).join(", ")}
                         </p>
                     </div>
-                    <div className="flex gap-2">
-                        <Button onClick={() => setIsSettleOpen(true)} variant="secondary" className="px-3 flex items-center gap-2">
-                            <RefreshCw size={18} />
+                    <div className="flex gap-3">
+                        <Button onClick={() => setIsSettleOpen(true)} variant="secondary" className="flex items-center gap-2">
+                            <ArrowRight size={18} />
                             Settle Up
-                        </Button>
-                        <Button onClick={() => setIsSettingsOpen(true)} variant="secondary" className="px-3">
-                            <Settings size={20} />
                         </Button>
                         <Button onClick={() => setIsAddOpen(true)} className="flex items-center gap-2">
                             <Plus size={18} />
                             Add Expense
                         </Button>
+                        <button
+                            onClick={() => setIsSettingsOpen(true)}
+                            className="p-3 bg-white-5 hover:bg-white-10 rounded-xl text-gray-400 hover:text-white transition-colors border border-white-10"
+                            title="Group Settings"
+                        >
+                            <Settings size={20} />
+                        </button>
                     </div>
                 </div>
 
@@ -365,13 +385,13 @@ export function GroupDetails() {
                             {Object.entries(balances).map(([member, amount]) => (
                                 <div key={member} className="flex justify-between items-center border-b border-white-5 pb-2 last:border-0">
                                     <span className="text-gray-300 flex items-center gap-2">
-                                        <div className="w-8 h-8 rounded-full bg-white-10 flex items-center justify-center text-xs">
-                                            {member[0]}
+                                        <div className="w-8 h-8 rounded-full bg-white-10 flex items-center justify-center text-xs font-bold text-accent-blue">
+                                            {formatMemberName(member).replace(/^@/, '')[0]?.toUpperCase() || "U"}
                                         </div>
-                                        {member}
+                                        <span className="font-medium">{formatMemberName(member)}</span>
                                     </span>
-                                    <span className={`font-bold ${amount >= 0 ? 'text-accent-green' : 'text-accent-red'}`}>
-                                        {amount >= 0 ? `gets ₹${amount.toFixed(2)}` : `owes ₹${Math.abs(amount).toFixed(2)}`}
+                                    <span className={`font-bold ${Math.abs(amount) < 0.01 ? 'text-gray-400' : amount > 0 ? 'text-accent-green' : 'text-accent-red'}`}>
+                                        {Math.abs(amount) < 0.01 ? "Settled up" : amount > 0 ? `gets ₹${amount.toFixed(2)}` : `owes ₹${Math.abs(amount).toFixed(2)}`}
                                     </span>
                                 </div>
                             ))}
@@ -395,11 +415,11 @@ export function GroupDetails() {
                                         </div>
                                         <div>
                                             <h4 className="font-bold text-white">{exp.title}</h4>
-                                            <p className="text-xs text-gray-500">
+                                            <p className="text-xs text-gray-400">
                                                 {exp.type === 'SETTLEMENT' ? (
-                                                    <span className="text-white">{exp.paidBy} paid {exp.paidTo}</span>
+                                                    <span className="text-white">{formatMemberName(exp.paidBy)} paid {formatMemberName(exp.paidTo)}</span>
                                                 ) : (
-                                                    <>Paid by <span className="text-white">{exp.paidBy}</span></>
+                                                    <>Paid by <span className="text-white font-medium">{formatMemberName(exp.paidBy)}</span></>
                                                 )}
                                                 &nbsp;• {format(new Date(exp.date), "MMM d")}
                                             </p>
