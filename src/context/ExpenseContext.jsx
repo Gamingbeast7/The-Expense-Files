@@ -272,27 +272,40 @@ export function ExpenseProvider({ children }) {
 
     const fetchGroupExpenses = (groupId) => {
         if (!groupId) return () => {};
+
+        // 1. Load from local cache immediately
+        try {
+            const cached = localStorage.getItem(`group_expenses_${groupId}`);
+            if (cached) {
+                setGroupExpenses(JSON.parse(cached));
+            }
+        } catch (e) {}
+
+        const handleGroupExpensesSnapshot = (snapshot) => {
+            const data = snapshot.docs.map(doc => {
+                const docData = doc.data();
+                return {
+                    id: doc.id,
+                    ...docData,
+                    amount: parseFloat(docData.amount) || 0,
+                    date: docData.date || new Date().toISOString()
+                };
+            });
+            data.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+            setGroupExpenses(data);
+            try {
+                localStorage.setItem(`group_expenses_${groupId}`, JSON.stringify(data));
+            } catch (e) {}
+        };
+
         try {
             const expensesRef = collection(db, "groups", groupId, "expenses");
             return onSnapshot(
                 query(expensesRef, orderBy("date", "desc")),
-                (snapshot) => {
-                    const data = snapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...doc.data()
-                    }));
-                    setGroupExpenses(data);
-                },
+                handleGroupExpensesSnapshot,
                 (err) => {
                     console.warn("Ordered group expenses failed, falling back:", err);
-                    onSnapshot(expensesRef, (snapshot) => {
-                        const data = snapshot.docs.map(doc => ({
-                            id: doc.id,
-                            ...doc.data()
-                        }));
-                        data.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-                        setGroupExpenses(data);
-                    }, console.error);
+                    onSnapshot(expensesRef, handleGroupExpensesSnapshot, console.error);
                 }
             );
         } catch (e) {
@@ -302,25 +315,60 @@ export function ExpenseProvider({ children }) {
 
     const addGroupExpense = async (groupId, expenseData) => {
         if (!currentUser || !groupId) return;
+        const tempId = `gexp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const validAmount = parseFloat(expenseData.amount) || 0;
+        const validDate = expenseData.date ? new Date(expenseData.date).toISOString() : new Date().toISOString();
+
+        const cleanGroupExpense = {
+            id: tempId,
+            title: (expenseData.title || "").trim(),
+            amount: validAmount,
+            date: validDate,
+            paidBy: expenseData.paidBy || "Me",
+            splitType: expenseData.splitType || "EQUAL",
+            involvedMembers: expenseData.involvedMembers || [],
+            payers: expenseData.payers || [],
+            syncToPersonal: !!expenseData.syncToPersonal,
+            type: expenseData.type || "EXPENSE",
+            createdBy: currentUser.uid,
+            creatorEmail: (currentUser.email || "").toLowerCase(),
+            createdAt: new Date().toISOString()
+        };
+
+        // 1. Instantly update local state and localStorage
+        setGroupExpenses(prev => {
+            const updated = [cleanGroupExpense, ...prev.filter(e => e.id !== tempId)];
+            try {
+                localStorage.setItem(`group_expenses_${groupId}`, JSON.stringify(updated));
+            } catch (err) {}
+            return updated;
+        });
+
+        // 2. Persist to Firestore
         try {
-            const validAmount = parseFloat(expenseData.amount) || 0;
-            const validDate = expenseData.date ? new Date(expenseData.date).toISOString() : new Date().toISOString();
+            const docRef = await addDoc(collection(db, "groups", groupId, "expenses"), {
+                title: cleanGroupExpense.title,
+                amount: cleanGroupExpense.amount,
+                date: cleanGroupExpense.date,
+                paidBy: cleanGroupExpense.paidBy,
+                splitType: cleanGroupExpense.splitType,
+                involvedMembers: cleanGroupExpense.involvedMembers,
+                payers: cleanGroupExpense.payers,
+                syncToPersonal: cleanGroupExpense.syncToPersonal,
+                type: cleanGroupExpense.type,
+                createdBy: cleanGroupExpense.createdBy,
+                creatorEmail: cleanGroupExpense.creatorEmail,
+                createdAt: cleanGroupExpense.createdAt
+            });
 
-            const cleanGroupExpense = {
-                title: (expenseData.title || "").trim(),
-                amount: validAmount,
-                date: validDate,
-                paidBy: expenseData.paidBy || "Me",
-                splitType: expenseData.splitType || "EQUAL",
-                involvedMembers: expenseData.involvedMembers || [],
-                payers: expenseData.payers || [],
-                syncToPersonal: !!expenseData.syncToPersonal,
-                createdBy: currentUser.uid,
-                creatorEmail: (currentUser.email || "").toLowerCase(),
-                createdAt: new Date().toISOString()
-            };
-
-            await addDoc(collection(db, "groups", groupId, "expenses"), cleanGroupExpense);
+            // Replace temporary ID with Firestore ID
+            setGroupExpenses(prev => {
+                const updated = prev.map(e => e.id === tempId ? { ...e, id: docRef.id } : e);
+                try {
+                    localStorage.setItem(`group_expenses_${groupId}`, JSON.stringify(updated));
+                } catch (err) {}
+                return updated;
+            });
 
             // Sync to personal expenses if requested and user paid
             if (expenseData.syncToPersonal) {
@@ -347,29 +395,44 @@ export function ExpenseProvider({ children }) {
                 }
             }
         } catch (e) {
-            console.error("Error adding group expense: ", e);
-            throw e;
+            console.error("Error adding group expense to Firestore: ", e);
         }
     };
 
     const updateGroupExpense = async (groupId, expenseId, data) => {
         if (!currentUser || !groupId || !expenseId) return;
+        // Optimistic update
+        setGroupExpenses(prev => {
+            const updated = prev.map(e => e.id === expenseId ? { ...e, ...data } : e);
+            try {
+                localStorage.setItem(`group_expenses_${groupId}`, JSON.stringify(updated));
+            } catch (err) {}
+            return updated;
+        });
+
         try {
             const expenseRef = doc(db, "groups", groupId, "expenses", expenseId);
             await updateDoc(expenseRef, data);
         } catch (e) {
             console.error("Error updating group expense: ", e);
-            throw e;
         }
     };
 
     const deleteGroupExpense = async (groupId, expenseId) => {
         if (!currentUser || !groupId || !expenseId) return;
+        // Optimistic delete
+        setGroupExpenses(prev => {
+            const updated = prev.filter(e => e.id !== expenseId);
+            try {
+                localStorage.setItem(`group_expenses_${groupId}`, JSON.stringify(updated));
+            } catch (err) {}
+            return updated;
+        });
+
         try {
             await deleteDoc(doc(db, "groups", groupId, "expenses", expenseId));
         } catch (e) {
             console.error("Error deleting group expense: ", e);
-            throw e;
         }
     };
 

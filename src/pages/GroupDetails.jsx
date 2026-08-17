@@ -150,46 +150,58 @@ export function GroupDetails() {
         setSettleAmount("");
     }
 
+    const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
+
     const handleAddExpense = async (e) => {
         e.preventDefault();
-        if ((!title && !editingExpense) || !amount) return;
+        const parsedAmount = parseFloat(amount);
+        if ((!title.trim() && !editingExpense) || !parsedAmount || isSubmittingExpense) return;
 
         // Validation for Multi-Payer
         if (isMultiPayer) {
             const totalPaid = payers.reduce((acc, curr) => acc + (parseFloat(curr.amount) || 0), 0);
-            if (Math.abs(totalPaid - parseFloat(amount)) > 0.01) {
-                alert(`Total payments (₹${totalPaid}) must match the expense amount (₹${amount})`);
+            if (Math.abs(totalPaid - parsedAmount) > 0.01) {
+                alert(`Total payments (₹${totalPaid.toFixed(2)}) must match the expense amount (₹${parsedAmount.toFixed(2)})`);
                 return;
             }
         }
 
-        const expenseData = {
-            title,
-            amount: parseFloat(amount),
-            date: editingExpense ? editingExpense.date : new Date().toISOString(),
-            paidBy: isMultiPayer ? 'Multiple' : paidBy,
-            payers: isMultiPayer ? payers : [],
-            splitType,
-            involvedMembers,
-            syncToPersonal: true,
-            type: "EXPENSE"
-        };
+        setIsSubmittingExpense(true);
+        try {
+            const membersToSplit = involvedMembers.length > 0 ? involvedMembers : allMembers;
 
-        if (editingExpense) {
-            await updateGroupExpense(groupId, editingExpense.id, expenseData);
-        } else {
-            await addGroupExpense(groupId, expenseData);
+            const expenseData = {
+                title: title.trim() || "Group Expense",
+                amount: parsedAmount,
+                date: editingExpense ? editingExpense.date : new Date().toISOString(),
+                paidBy: isMultiPayer ? 'Multiple' : (paidBy || "Me"),
+                payers: isMultiPayer ? payers : [],
+                splitType: splitType || "EQUAL",
+                involvedMembers: membersToSplit,
+                syncToPersonal: true,
+                type: "EXPENSE"
+            };
+
+            if (editingExpense) {
+                await updateGroupExpense(groupId, editingExpense.id, expenseData);
+            } else {
+                await addGroupExpense(groupId, expenseData);
+            }
+
+            setIsAddOpen(false);
+            setEditingExpense(null);
+            setTitle("");
+            setAmount("");
+            setPaidBy("Me");
+            setIsMultiPayer(false);
+            setPayers([]);
+            setInvolvedMembers(allMembers);
+            setSyncToPersonal(false);
+        } catch (err) {
+            console.error("Failed to add group expense:", err);
+        } finally {
+            setIsSubmittingExpense(false);
         }
-
-        setIsAddOpen(false);
-        setEditingExpense(null);
-        setTitle("");
-        setAmount("");
-        setPaidBy("Me");
-        setIsMultiPayer(false);
-        setPayers([]);
-        setInvolvedMembers(allMembers);
-        setSyncToPersonal(false);
     };
 
     // Group Settings Logic
@@ -524,9 +536,15 @@ export function GroupDetails() {
                                     </div>
                                 </div>
 
-                            <Button type="submit" className="w-full py-3">
-                                Add Expense
-                            </Button>
+                                <Button
+                                    type="submit"
+                                    disabled={isSubmittingExpense || !amount || (!title.trim() && !editingExpense)}
+                                    className="w-full py-3"
+                                >
+                                    {isSubmittingExpense
+                                        ? (editingExpense ? "Updating Expense..." : "Adding Expense...")
+                                        : (editingExpense ? "Update Expense" : "Add Expense")}
+                                </Button>
                         </form>
                     </motion.div>
                 </div>
