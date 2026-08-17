@@ -10,6 +10,9 @@ import { useAuth } from "../context/AuthContext";
 import { Plus, X, Receipt, ArrowRight, User, Check, Settings, Trash2, UserPlus, MoreVertical, Edit2, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../firebase";
+
 export function GroupDetails() {
     const { groupId } = useParams();
     const navigate = useNavigate();
@@ -17,31 +20,25 @@ export function GroupDetails() {
     const { groups, fetchGroupExpenses, groupExpenses, addGroupExpense, updateGroupExpense, deleteGroupExpense, user } = useExpenses();
     const [isAddOpen, setIsAddOpen] = useState(false);
 
+    // Direct Firestore Group Subscription
+    const [directGroup, setDirectGroup] = useState(null);
+    const group = groups.find(g => g.id === groupId) || directGroup;
+
+    useEffect(() => {
+        if (!groupId) return;
+        try {
+            const unsub = onSnapshot(doc(db, "groups", groupId), (snap) => {
+                if (snap.exists()) {
+                    setDirectGroup({ id: snap.id, ...snap.data() });
+                }
+            }, console.warn);
+            return () => unsub();
+        } catch (e) {
+            console.warn("Direct group listener error:", e);
+        }
+    }, [groupId]);
+
     // Helpers for Add Expense Form
-    const [title, setTitle] = useState("");
-    const [amount, setAmount] = useState("");
-    const [paidBy, setPaidBy] = useState("Me");
-    const [splitType, setSplitType] = useState("EQUAL");
-    const [involvedMembers, setInvolvedMembers] = useState([]); // Members involved in split
-    const [syncToPersonal, setSyncToPersonal] = useState(false); // Sync to personal dashboard
-
-    // Multi-payer State
-    const [payers, setPayers] = useState([]); // [{uid, amount}]
-    const [isMultiPayer, setIsMultiPayer] = useState(false);
-
-    // Edit Mode State
-    const [editingExpense, setEditingExpense] = useState(null);
-
-    // Settle Up State
-    const [isSettleOpen, setIsSettleOpen] = useState(false);
-    const [settlePayer, setSettlePayer] = useState("");
-    const [settleReceiver, setSettleReceiver] = useState("");
-    const [settleAmount, setSettleAmount] = useState("");
-
-    // Group Settings State
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-    const group = groups.find(g => g.id === groupId);
 
     // All members in the group (Creator + Friends) relative to viewer
     const allMembers = useMemo(() => {

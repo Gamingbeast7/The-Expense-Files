@@ -463,28 +463,56 @@ export function ExpenseProvider({ children }) {
                 return updated;
             });
 
-            // Sync to personal expenses if requested and user paid
-            if (expenseData.syncToPersonal) {
-                let personalAmount = validAmount;
-                if ((expenseData.splitType === 'EQUAL' || !expenseData.splitType) && Array.isArray(expenseData.involvedMembers) && expenseData.involvedMembers.length > 0) {
-                    const amIInvolved = expenseData.involvedMembers.includes('Me') ||
-                        expenseData.involvedMembers.includes(currentUser.uid) ||
-                        expenseData.involvedMembers.includes(currentUser.displayName) ||
-                        expenseData.involvedMembers.includes(currentUser.username);
+            // Sync personal share to all involved registered members
+            const targetGroup = groups.find(g => g.id === groupId);
+            const involvedList = cleanGroupExpense.involvedMembers || [];
+            const splitCount = (Array.isArray(involvedList) && involvedList.length > 0) ? involvedList.length : 1;
+            const shareAmount = parseFloat((validAmount / splitCount).toFixed(2));
 
+            if (shareAmount > 0) {
+                const groupLabel = targetGroup?.name ? `[${targetGroup.name}] ` : '[Group] ';
+                
+                // Sync for current user
+                if (expenseData.syncToPersonal) {
+                    const amIInvolved = involvedList.length === 0 || involvedList.some(im => {
+                        const l = String(im).toLowerCase();
+                        return l === 'me' || l === 'you' || l === currentUser.uid?.toLowerCase() || l === (currentUser.username || '').toLowerCase() || l === (currentUser.displayName || '').toLowerCase();
+                    });
                     if (amIInvolved) {
-                        personalAmount = validAmount / expenseData.involvedMembers.length;
+                        await addExpense({
+                            title: `${groupLabel}${cleanGroupExpense.title}`,
+                            amount: shareAmount,
+                            date: validDate,
+                            category: "Shared",
+                            paymentSource: "Group Split"
+                        });
                     }
                 }
 
-                if (personalAmount > 0) {
-                    await addExpense({
-                        title: `[Group] ${cleanGroupExpense.title}`,
-                        amount: parseFloat(personalAmount.toFixed(2)),
-                        date: validDate,
-                        category: "Shared",
-                        paymentSource: "Group Split"
-                    });
+                // Sync for other registered friends involved
+                if (targetGroup && Array.isArray(targetGroup.friends)) {
+                    for (const friend of targetGroup.friends) {
+                        if (friend.uid && !friend.uid.startsWith('friend_') && friend.uid !== currentUser.uid) {
+                            const isFriendInvolved = involvedList.length === 0 || involvedList.some(im => {
+                                const l = String(im).toLowerCase();
+                                return l === (friend.username || '').toLowerCase() || l === (friend.displayName || '').toLowerCase() || l === friend.uid?.toLowerCase();
+                            });
+                            if (isFriendInvolved) {
+                                try {
+                                    await addDoc(collection(db, "users", friend.uid, "expenses"), {
+                                        title: `${groupLabel}${cleanGroupExpense.title}`,
+                                        amount: shareAmount,
+                                        date: validDate,
+                                        category: "Shared",
+                                        paymentSource: "Group Split",
+                                        createdAt: new Date().toISOString()
+                                    });
+                                } catch (err) {
+                                    console.warn("Could not sync expense to friend log:", err);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } catch (e) {
